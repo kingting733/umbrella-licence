@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>擔遮考牌</title>
+<meta name="description" content="如果香港擔遮要考牌？筆試、路試、領牌，仲有挑戰模式。">
+<meta name="theme-color" content="#16181d">
+<meta property="og:title" content="擔遮考牌">
+<meta property="og:description" content="如果香港擔遮要考牌？筆試 5 題、路試 60 秒，攞唔攞到牌就睇你。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M6 34Q32 2 58 34Q51 29 45 34Q38 29 32 34Q26 29 19 34Q13 29 6 34Z' fill='%23e23b3b'/%3E%3Cpath d='M32 34V52Q32 58 26 58' stroke='%2316181d' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head>
+<body>
+<canvas id="world" aria-hidden="true"></canvas>
+<div id="loading" class="loading"><span class="pill">砌緊條街…</span></div>
+
+<main id="app">
+  <!-- 報到 -->
+  <section id="intro" class="screen">
+    <div class="hook"><span>如果香港擔遮</span><span>要<em>考牌</em>？</span></div>
+    <div class="panel">
+      <ol class="steps">
+        <li><span class="pill">① 筆試</span><p>抽 5 題，每題 15 秒，答啱 4 題先考路試</p></li>
+        <li><span class="pill">② 路試</span><p>行 60 秒，錯 3 次肥佬，插中阿婆即時肥佬</p></li>
+        <li><span class="pill">③ 領牌</span><p>雨衣令、縮骨遮牌，定全類別牌？</p></li>
+      </ol>
+      <label class="field" for="nameInput"><span>考生姓名</span><input id="nameInput" maxlength="8" placeholder="陳大文" autocomplete="off"></label>
+      <button class="btn" id="startBtn" type="button">開始筆試</button>
+      <button class="btn ghost" id="introChallengeBtn" type="button" hidden>④ 挑戰模式（已解鎖）</button>
+      <p class="fine">純屬虛構：遮政署、《擔遮條例》同所有舖名都係作出嚟。</p>
+    </div>
+  </section>
+
+  <!-- 筆試 -->
+  <section id="written" class="screen" hidden>
+    <div class="topbar"><span class="pill">① 筆試</span><span class="pill timer" id="qTimer"><b id="qSec">15</b> 秒</span></div>
+    <div class="paper">
+      <div class="paper-bar"><i id="qBar"></i></div>
+      <header class="paper-head"><span>擔遮牌照　筆試（甲部）</span><span class="dots" id="dots"><i></i><i></i><i></i><i></i><i></i></span></header>
+      <p class="qnum" id="qNum">第 1 題（必答）</p>
+      <p class="qtext" id="qText"></p>
+      <figure class="sign" id="qSign" hidden></figure>
+      <div class="opts" id="opts"></div>
+      <div class="feedback" id="feedback" hidden>
+        <img class="face" id="fbFace" alt="">
+        <div><span class="pill" id="fbPill">答啱</span><p id="fbWhy"></p></div>
+      </div>
+      <button class="btn" id="nextBtn" type="button" hidden>下一題</button>
+    </div>
+  </section>
+
+  <section id="writtenResult" class="screen center" hidden>
+    <div class="topbar"><span class="pill">① 筆試成績</span></div>
+    <div class="panel tight">
+      <div class="score"><span id="wrScore">4</span><small>/ 5</small></div>
+      <div class="stamp" id="wrStamp">合格</div>
+      <p class="line" id="wrLine"></p>
+      <button class="btn" id="wrBtn" type="button">前往路試</button>
+    </div>
+  </section>
+
+  <!-- 路試須知 -->
+  <section id="roadIntro" class="screen" hidden>
+    <div class="topbar"><span class="pill">② 路試須知</span></div>
+    <div class="panel">
+      <p class="lead">你身高 <b>170cm</b>。迎面嘅人會喺你<b>左邊</b>或者<b>右邊</b>行過，睇佢頭頂個牌，喺擦身之前撳啱掣。</p>
+      <div class="rules">
+        <div class="rule"><span class="chip up">舉高</span><p>藍牌：矮過你嘅人。插中阿婆即時肥佬。</p></div>
+        <div class="rule"><span class="chip down">壓低 ← →</span><p>橙牌：高過你嘅人。佢行邊邊就撳邊邊，撳錯邊一樣撞遮。</p></div>
+        <div class="rule"><span class="chip either">任揀</span><p>白牌：同你差唔多高，舉高或者向佢嗰邊壓低都得。</p></div>
+        <div class="rule"><span class="chip close">緊急收遮</span><p>頭頂有招牌或者騎樓，1 秒內收遮；行出嚟再撳掣開返。冇瓦遮頭收遮超過 2 秒會淋濕。</p></div>
+      </div>
+      <p class="fine">撳完把遮只會維持 1 秒，要睇準先撳；最後 0.3 秒撳啱有 PERFECT。電腦：← ↑ → 方向鍵，空白鍵收遮。</p>
+      <button class="btn" id="roadStartBtn" type="button">開始路試</button>
+    </div>
+  </section>
+
+  <!-- 路試 / 挑戰 -->
+  <section id="road" class="screen game" hidden>
+    <div class="stage">
+      <div class="hud">
+        <span class="pill" id="hudMode">② 路試</span>
+        <span class="pill timer" id="hudTime">60.0</span>
+        <span class="lives" id="lives"></span>
+      </div>
+      <div class="tbar"><i id="tbarFill"></i></div>
+      <div class="combo" id="combo"></div>
+      <div class="tags" id="tags"></div>
+      <div class="banner" id="banner" hidden></div>
+      <div class="warn" id="warn" hidden>頭頂招牌！收遮！</div>
+      <div class="pop" id="pop"></div>
+      <div class="wet" id="wet" hidden><span>淋緊雨</span><b><i id="wetFill"></i></b></div>
+      <div class="exam" id="exam" data-mood="neutral"><img id="examFace" alt=""><p><small>考官 黃 Sir</small><span id="examText">準備好就出發。</span></p></div>
+      <div class="count" id="count" hidden>3</div>
+      <div class="end" id="endOverlay" hidden><div class="end-stamp" id="endStamp">路試完成</div><p id="endReason"></p></div>
+    </div>
+    <div class="controls">
+      <button class="cbtn down" data-act="downL" type="button">壓低 ←<span class="hold"></span></button>
+      <button class="cbtn up" data-act="up" type="button">舉高<small>30°</small><span class="hold"></span></button>
+      <button class="cbtn down" data-act="downR" type="button">壓低 →<span class="hold"></span></button>
+      <button class="cbtn close" data-act="close" id="bClose" type="button">緊急收遮<span class="hold"></span></button>
+    </div>
+  </section>
+
+  <!-- 結果 -->
+  <section id="result" class="screen" hidden>
+    <div class="topbar"><span class="pill">③ 領牌</span></div>
+    <div class="panel">
+      <div class="verdict"><span class="pill" id="resPill">全科合格</span><p id="resLine"></p></div>
+      <img class="card" id="cardImg" alt="你嘅牌照卡">
+      <p class="fine center">手機長按張卡、電腦撳右鍵就可以儲存。</p>
+      <div id="taxiArea" hidden>
+        <button class="btn gold" id="taxiBtn" type="button">申請做「遮的」司機</button>
+        <p class="fine center" id="taxiStatus" hidden>審批中…</p>
+        <img class="card" id="taxiImg" alt="遮的司機證" hidden>
+      </div>
+      <table class="sheet"><tbody id="resRows"></tbody></table>
+      <div class="log" id="resLog"></div>
+      <button class="btn" id="challengeBtn" type="button" hidden>④ 挑戰模式：每 10 秒快 20%</button>
+      <button class="btn ghost" id="retryBtn" type="button">再考一次</button>
+    </div>
+  </section>
+
+  <section id="challengeResult" class="screen center" hidden>
+    <div class="topbar"><span class="pill">④ 挑戰模式</span></div>
+    <div class="panel tight">
+      <p class="fine center">生存時間</p>
+      <div class="score"><span id="crTime">0.0</span><small>秒</small></div>
+      <p class="line" id="crBest"></p>
+      <table class="sheet"><tbody id="crRows"></tbody></table>
+      <p class="fine center" id="crReason"></p>
+      <button class="btn" id="crAgain" type="button">再挑戰</button>
+      <button class="btn ghost" id="crBack" type="button">返去領牌處</button>
+    </div>
+  </section>
+</main>
+<script type="module" src="js/game.js"></script>
+</body>
+</html>
