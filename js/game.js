@@ -1,9 +1,9 @@
-import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=13';
+import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=14';
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=13';
-import * as W from './scene.js?v=13';
-import { submitScore, getBoard } from './board.js?v=13';
-import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=13';
+import { QUESTIONS, SIGNS } from './questions.js?v=14';
+import * as W from './scene.js?v=14';
+import { submitScore, getBoard } from './board.js?v=14';
+import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=14';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -99,7 +99,7 @@ const CM = { popo: 155, kid: 132, flyer: 160, ol: 167, phone: 171, rider: 175, m
 // 節奏：行慢啲（VWALK / VREL）、人少啲（GAP：每個人之間隔 2.6–3.4 秒）、撳完把遮維持耐啲（HOLD）
 const VWALK = 1.2, VREL = 2.2, HOLD = 1.6, PERFECT = .4, WET = 2.0, TEST_LEN = 60, HINT_UNTIL = 20, GAP = [2.6, 3.4], WARN_SIGN = 1.6;
 // 高過你嘅人：佢喺邊邊行過，就將遮壓低去另一邊（左邊嚟 → 壓低 →），讓佢把遮喺你上面過
-// 離擦身 1.45 秒內個牌閃「撳！」：撳完把遮維持 1.6 秒，啱啱好包住擦身嗰下（之前個牌喺擦身前 1 秒就收埋，撳嘅時機淨係得 0.6 秒）
+// 練習課（第 1–5 課）先有：離擦身 1.45 秒內個牌閃「撳！」；自己試、正式路試、挑戰模式都冇（使用者 2026-11-11）。撳完把遮維持 1.6 秒，啱啱好包住擦身嗰下（之前個牌喺擦身前 1 秒就收埋，撳嘅時機淨係得 0.6 秒）
 const NOW_T = 1.45;
 const awaySide = side => side < 0 ? 'downR' : 'downL';
 const awayArrow = side => side < 0 ? '壓低 →' : '← 壓低';
@@ -126,16 +126,16 @@ function showCount(v, go) { const c = $('#count'); c.textContent = v; c.hidden =
 // 逐課教：藍牌 → 橙牌（左）→ 橙牌（右）→ 白牌 → 瓦遮頭。到要撳嘅時候停低、亮住要撳嘅掣，撳啱先繼續；最後自己試 5 個（唔停、唔計分）
 // p: [人, 邊（-1 左 / 1 右）, 擦身秒數]；s: [瓦遮頭款式, 長度米, 秒數]
 const TUT = [
-  { at: .3, start: true, text: '路試之前練一練。迎面嘅人頭頂有個牌：<br><b>顏色</b> → 撳邊個掣　<b>箭咀</b> → 壓低去邊　<b>「撳！」</b> → 幾時撳' },
-  { lesson: 1, p: ['kid', 1, 6], appear: '<span class="ck up">藍牌</span> = 矮過你 → 撳 <b>舉高</b>。<br>唔好即刻撳：等個牌閃 <span class="ck now">撳！</span> 先撳。', want: ['up'], now: '個牌閃「撳！」喇 → 撳 <b>舉高</b>！' },
+  { at: .3, start: true, text: '路試之前練一練。迎面嘅人頭頂有個牌：<br><b>顏色</b> → 撳邊個掣　<b>箭咀</b> → 壓低去邊　<b>「撳！」</b> → 幾時撳（只係練習先有）' },
+  { lesson: 1, p: ['kid', 1, 6], appear: '<span class="ck up">藍牌</span> = 矮過你 → 撳 <b>舉高</b>。<br>唔好即刻撳：等個牌閃 <span class="ck now">撳！</span> 先撳。', want: ['up'], now: '個牌閃「撳！」喇 → 撳 <b>舉高</b>！<br>記住呢個距離：正式路試<b>唔會</b>有「撳！」提示。' },
   { lesson: 2, p: ['muscle', -1, 12], appear: '<span class="ck down">橙牌</span> = 高過你 → 要 <b>壓低</b>。<br>佢喺<b>左邊</b>嚟，箭咀指 <b>→</b>：壓低去右邊，讓佢把遮喺你上面過。', want: ['downR'], now: '跟住箭咀 → 撳 <b>壓低 →</b>！' },
   { lesson: 3, p: ['rider', 1, 17.5], appear: '今次佢喺<b>右邊</b>嚟，箭咀指 <b>←</b>。<br>記住：<b>箭咀指邊，就撳邊</b>。', want: ['downL'], now: '撳 <b>← 壓低</b>！' },
   { lesson: 4, p: ['phone', -1, 23], appear: '<span class="ck either">白牌</span> = 同你差唔多高：<br><b>舉高</b>或者<b>跟箭咀壓低</b>都得。', want: ['up', 'downR'], now: '揀一個：<b>舉高</b> 或者 <b>壓低 →</b>' },
   { lesson: 5, s: ['arcade', 5, 29], warn: '頭頂有騎樓！見到紅色警告 → 撳 <b>緊急收遮</b>。', under: '瓦遮頭底下大家都收咗遮，<b>唔使避人</b>。', exit: '行出瓦遮頭 → 即刻撳 <b>開遮</b>，唔係會淋濕。' },
-  { at: 34.6, practice: true, text: '最後自己試 5 個：唔會停、唔計分。<br>記住三步：<b>睇顏色 → 睇箭咀 → 等「撳！」</b>' },
+  { at: 34.6, practice: true, text: '最後自己試 5 個：<b>冇「撳！」提示</b>，同正式路試一樣（唔會停、唔計分）。<br>記住三步：<b>睇顏色 → 睇箭咀 → 行到面前先撳</b>' },
   { p: ['popo', -1, 40] }, { p: ['baller', 1, 43.4] }, { p: ['ol', 1, 46.8] }, { p: ['tourist', -1, 50.2] }, { p: ['phone', 1, 53.6] },
 ];
-const TUT_END = 55.4, TUT_IDLE = '自己試：<b>睇顏色 → 睇箭咀 → 等「撳！」</b>';
+const TUT_END = 55.4, TUT_IDLE = '自己試：<b>睇顏色 → 睇箭咀 → 行到面前先撳</b>';
 function buildTutorial() {
   R.events = []; R.lastContact = 1e9;   // 唔使 genEvents
   for (const c of TUT) {
@@ -182,7 +182,7 @@ function tutFault(title, reason, key) {
 function tutorialDone() {
   R.ended = true; R.running = false; music(null); sfx.win(); store.set('tutDone', true); $('#tags').innerHTML = ''; R.tut.idle = null;
   const m = R.tut.miss;
-  coach({ text: `練習完成！${m ? `自己試錯咗 ${m} 次，可以再練多次。` : '自己試 5 個全部過晒！'}<br>正式路試一樣：<b>睇顏色 → 睇箭咀 → 等「撳！」</b>`,
+  coach({ text: `練習完成！${m ? `自己試錯咗 ${m} 次，可以再練多次。` : '自己試 5 個全部過晒！'}<br>正式路試一樣：<b>睇顏色 → 睇箭咀 → 行到面前先撳</b>`,
     btns: [['開始路試', () => startRoad('test')], ['再練一次', () => startRoad('tutorial'), 'ghost']], block: true });
 }
 // 教練卡（畫面底部）
@@ -375,7 +375,7 @@ function drawTags() {
     const w = want[i]; if (!w) { el.style.display = 'none'; return; }
     const p = PEOPLE[w.e.type], arrow = w.e.side < 0 ? '→' : '←';   // 箭咀 = 要壓低嘅方向（佢嘅另一邊）
     const hintTxt = !hint ? '' : p.need === 'up' ? '舉高' : p.need === 'down' ? awayArrow(w.e.side) : '舉高 / ' + awayArrow(w.e.side);
-    const now = w.e.contact - R.t <= NOW_T && w.e.contact >= R.coverUntil;
+    const now = R.mode === 'tutorial' && R.tut.lesson < 6 && w.e.contact - R.t <= NOW_T && w.e.contact >= R.coverUntil;
     el.style.display = ''; el.className = 'tag ' + p.need + (now ? ' now' : '') + (w.e !== next ? ' later' : '') + (R.coach && R.coach.ev === w.e ? ' focus' : '');
     el.innerHTML = `<b>${CM[w.e.type]}cm</b> ${p.name}${p.need !== 'up' ? `<i>${arrow}</i>` : ''}${hintTxt ? `<small>${hintTxt}</small>` : ''}${now ? '<em>撳！</em>' : ''}`;
     const bw = box.clientWidth, half = el.offsetWidth / 2 + 8;   // 唔好俾標籤出咗畫面

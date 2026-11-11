@@ -1,4 +1,4 @@
-import { showBrowserHelp } from './browser.mjs?v=13';
+import { showBrowserHelp } from './browser.mjs?v=14';
 // Local canvas exports: no result image or nickname is uploaded to generate a card.
 export const GAME_URL = 'https://www.whatifhk.com/umbrella-licence/';
 export const FORMATS = { story: [1080, 1920], post: [1080, 1350] };

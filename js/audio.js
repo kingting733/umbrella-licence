@@ -141,7 +141,7 @@ const TRACK_GAIN = { road: 1.2 };   // 路試音樂大聲 20%（使用者 2026-1
 const bufs = {}, loading = {}; let fileSrc = null;
 function loadTrack(name) {
   if (!FILES[name] || bufs[name] || loading[name] || !ctx) return;
-  loading[name] = fetch(new URL(`../audio/${name}.mp3?v=13`, import.meta.url)).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+  loading[name] = fetch(new URL(`../audio/${name}.mp3?v=14`, import.meta.url)).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
     .then(ab => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej)))
     .then(b => { bufs[name] = b; if (track === name && !fileSrc) startFile(name, .8); })
     .catch(() => { loading[name] = null; });   // 載入失敗：繼續用合成音樂
