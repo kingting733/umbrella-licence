@@ -1,7 +1,7 @@
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=8';
-import * as W from './scene.js?v=8';
-import { submitScore, getBoard } from './board.js?v=8';
+import { QUESTIONS, SIGNS } from './questions.js?v=9';
+import * as W from './scene.js?v=9';
+import { submitScore, getBoard } from './board.js?v=9';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -287,7 +287,7 @@ function finishExam(outcome) {
   if (st && st.title) rows.push(['稱號', st.title]);
   $('#resRows').innerHTML = rows.map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
   $('#resLog').innerHTML = st && st.log.length ? '<p class="loghead">犯錯紀錄</p>' + st.log.map(l => `<p>${l}</p>`).join('') : '';
-  const verdict = { raincoat: ['不合格', '即日起出街須著<b>雨衣</b>。下次可預約考試日期：2028 年 3 月。'], partial: ['有條件合格', '批出第 1 類：<b>縮骨遮</b>。其他類別要零犯錯先批。'], full: ['全科合格', '批出<b>全部類別</b>，仲可以申請做「遮的」司機。'] }[grade];
+  const verdict = { raincoat: ['不合格', '即日起出街須著<b>雨衣</b>。下次可預約考試日期：2028 年 3 月。'], partial: ['有條件合格', '批出第 1 類：<b>縮骨遮</b>。其他類別要零犯錯先批。'], full: ['全科合格', '批出<b>全部類別</b>，仲可以申請做「Uber Umbrella」司機。'] }[grade];
   $('#resPill').textContent = verdict[0]; $('#resPill').className = 'pill ' + (grade === 'raincoat' ? 'red' : grade === 'full' ? 'green' : 'blue'); $('#resLine').innerHTML = verdict[1];
   $('#cardImg').src = makeCard(grade); $('#taxiArea').hidden = grade !== 'full'; $('#taxiImg').hidden = true; $('#taxiStatus').hidden = true; $('#taxiBtn').hidden = false;
   $('#challengeBtn').hidden = grade === 'raincoat'; W.setMode('menu', grade); show('result'); setTimeout(sfx.stamp, 400);
@@ -300,7 +300,7 @@ function wrap(g, text, x, y, maxW, lh) { let line = ''; for (const ch of text) {
 const PHOTO = {};
 function makeCard(kind) {
   const Wc = 1000, Hc = 630, c = document.createElement('canvas'); c.width = Wc; c.height = Hc; const g = c.getContext('2d');
-  const head = { raincoat: [RED, '雨衣令', 'RAINCOAT ORDER'], partial: [GREEN, '香港擔遮牌照', '第 1 類'], full: [GREEN, '香港擔遮牌照', '全類別'], taxi: [INK, '遮的司機證', 'UMBRELLA TAXI'] }[kind];
+  const head = { raincoat: [RED, '雨衣令', 'RAINCOAT ORDER'], partial: [GREEN, '香港擔遮牌照', '第 1 類'], full: [GREEN, '香港擔遮牌照', '全類別'], taxi: [INK, 'Uber Umbrella', '司機證'] }[kind];
   g.save(); rr(g, 0, 0, Wc, Hc, 34); g.clip(); g.fillStyle = '#f7f6f1'; g.fillRect(0, 0, Wc, Hc);
   g.strokeStyle = 'rgba(46,111,216,.07)'; g.lineWidth = 1.4; for (let k = 0; k < 26; k++) { g.beginPath(); for (let x = 0; x <= Wc; x += 10) { const y = 130 + k * 20 + Math.sin(x / 60 + k * .7) * 10; x ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
   g.fillStyle = head[0]; g.fillRect(0, 0, Wc, 104);
@@ -311,7 +311,7 @@ function makeCard(kind) {
   const L = (t, x, y) => { g.fillStyle = '#7a7d82'; g.font = `700 22px ${FONT}`; g.fillText(t, x, y); };
   const V = (t, x, y, s = 40, col = INK) => { g.fillStyle = col; g.font = `900 ${s}px ${FONT}`; g.fillText(t, x, y); };
   L('姓名', 310, 160); V(G.name, 310, 210, 58);
-  L(kind === 'taxi' ? '司機編號' : kind === 'raincoat' ? '文件編號' : '執照號碼', 310, 278); V(kind === 'taxi' ? 'TX-' + G.licNo.slice(1, 5) : G.licNo, 310, 320, 34);
+  L(kind === 'taxi' ? '司機編號' : kind === 'raincoat' ? '文件編號' : '執照號碼', 310, 278); V(kind === 'taxi' ? 'UB-' + G.licNo.slice(1, 5) : G.licNo, 310, 320, 34);
   L('簽發日期', 640, 278); V(today(), 640, 320, 34);
   L('有效期至', 310, 384); V(kind === 'raincoat' ? '重考合格為止' : '下次打風為止', 310, 424, 32);
   if (kind === 'taxi') {
