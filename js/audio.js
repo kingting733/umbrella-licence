@@ -137,10 +137,11 @@ export function ambience(mode) {
 let track = null, step = 0, nextT = 0, tempo = 1, semis = 0;
 // 音樂檔：[loopStart, loopEnd]（秒，嚟自 audio/loops.json；檔頭尾各有 0.3 秒重複，避開 mp3 補白）
 const FILES = { road: [.3, 18.30107], menu: [.3, 20.29238], quiz: [.3, 24.30152] }, FILE_GAIN = .62;
+const TRACK_GAIN = { road: 1.2 };   // 路試音樂大聲 20%（使用者 2026-11-11）
 const bufs = {}, loading = {}; let fileSrc = null;
 function loadTrack(name) {
   if (!FILES[name] || bufs[name] || loading[name] || !ctx) return;
-  loading[name] = fetch(new URL(`../audio/${name}.mp3?v=11`, import.meta.url)).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+  loading[name] = fetch(new URL(`../audio/${name}.mp3?v=12`, import.meta.url)).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
     .then(ab => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej)))
     .then(b => { bufs[name] = b; if (track === name && !fileSrc) startFile(name, .8); })
     .catch(() => { loading[name] = null; });   // 載入失敗：繼續用合成音樂
@@ -149,7 +150,7 @@ const fileRate = () => 1 + Math.min(5, semis) * .05;
 function startFile(name, fadeIn) {
   const [ls, le] = FILES[name], t = ctx.currentTime + .02, s = ctx.createBufferSource(), g = ctx.createGain();
   s.buffer = bufs[name]; s.loop = true; s.loopStart = ls; s.loopEnd = le; s.playbackRate.value = fileRate();
-  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(FILE_GAIN, t + fadeIn); s.connect(g); g.connect(musBus); s.start(t, ls);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(FILE_GAIN * (TRACK_GAIN[name] || 1), t + fadeIn); s.connect(g); g.connect(musBus); s.start(t, ls);
   fileSrc = { s, g };
 }
 function stopFile(fade) {
