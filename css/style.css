@@ -184,3 +184,17 @@ body.ready .loading { display: none; }
   #challengeResult { justify-content: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* 聲音掣（左上角，所有畫面都有）：0 全開、1 冇背景音樂、2 全部靜音 */
+.sound-btn { position: fixed; z-index: 30; left: max(10px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); display: flex; align-items: center; gap: 1px; height: 38px; padding: 0 9px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; cursor: pointer; box-shadow: 0 4px 12px -6px rgba(0,0,0,.5); }
+.sound-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.sound-btn .spk { fill: currentColor; }
+.sound-btn .note { width: 15px; height: 15px; }
+.sound-btn .note circle { fill: currentColor; }
+.sound-btn .x, .sound-btn .slash { display: none; }
+.sound-btn .slash { stroke: var(--red); stroke-width: 3; }
+.sound-btn[data-state="1"] .note .slash { display: inline; }
+.sound-btn[data-state="1"] .note { opacity: .55; }
+.sound-btn[data-state="2"] .w1, .sound-btn[data-state="2"] .w2, .sound-btn[data-state="2"] .note { display: none; }
+.sound-btn[data-state="2"] .x { display: inline; stroke: var(--red); }
+.sound-tip { position: fixed; z-index: 30; left: max(10px, env(safe-area-inset-left)); top: calc(max(10px, env(safe-area-inset-top)) + 44px); background: var(--ink); color: #fff; font-weight: 900; font-size: 14px; padding: 6px 10px; border-radius: 10px; pointer-events: none; }

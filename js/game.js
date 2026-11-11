@@ -1,7 +1,8 @@
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=9';
-import * as W from './scene.js?v=9';
-import { submitScore, getBoard } from './board.js?v=9';
+import { QUESTIONS, SIGNS } from './questions.js?v=10';
+import * as W from './scene.js?v=10';
+import { submitScore, getBoard } from './board.js?v=10';
+import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=10';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -14,28 +15,23 @@ const store = {
   set(k, v) { try { localStorage.setItem('umbrella.' + k, JSON.stringify(v)); } catch (e) { /* 私隱模式：唔記住就算 */ } },
 };
 
-// ---------- 聲音（全部即時合成）----------
-let actx = null, rainNode = null;
-function audio() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } } if (actx && actx.state === 'suspended') actx.resume().catch(() => {}); return actx; }
-function tone(f, dur, type = 'sine', vol = .12, slide = null, delay = 0) { if (!actx) return; const t0 = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.setValueAtTime(f, t0); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t0 + dur); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur); o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + dur + .03); }
-const sfx = {
-  tap() { tone(560, .05, 'square', .05); },
-  tick() { tone(1250, .03, 'square', .04); },
-  ok() { tone(880, .08, 'sine', .12); tone(1320, .12, 'sine', .1, null, .07); },
-  perfect() { [880, 1175, 1568].forEach((f, i) => tone(f, .1, 'triangle', .12, null, i * .06)); },
-  bad() { tone(150, .35, 'sawtooth', .16, 80); },
-  warn() { tone(990, .07, 'square', .06); tone(990, .07, 'square', .06, null, .12); },
-  stamp() { tone(110, .16, 'square', .18, 55); },
-  win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .16, 'triangle', .12, null, i * .1)); },
-  speed() { tone(440, .25, 'sawtooth', .07, 880); },
-  siren() { if (!actx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain(); o.type = 'sawtooth'; for (let i = 0; i < 4; i++) { o.frequency.setValueAtTime(650, t + i * .25); o.frequency.linearRampToValueAtTime(1050, t + i * .25 + .125); o.frequency.linearRampToValueAtTime(650, t + i * .25 + .25); } g.gain.setValueAtTime(.1, t); g.gain.linearRampToValueAtTime(.0001, t + 1); o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + 1.05); },
-};
-function rainOn(v) { if (!actx) return; if (!rainNode) { const len = actx.sampleRate * 2, buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; const src = actx.createBufferSource(); src.buffer = buf; src.loop = true; const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1700; f.Q.value = .5; const g = actx.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(actx.destination); src.start(); rainNode = { src, g }; } rainNode.g.gain.setTargetAtTime(v, actx.currentTime, .4); }
+// ---------- 聲音：audio.js（背景音樂 + 音效 + 雨聲，全部即時合成）----------
+// 每個畫面用邊首背景音樂；路試畫面等倒數完先起音樂
+const SCREEN_MUSIC = { intro: 'menu', written: 'quiz', writtenResult: 'menu', roadIntro: 'menu', road: null, result: 'menu', challengeResult: 'menu' };
+let curScreen = 'intro';
+function audio() { if (unlock()) { if (curScreen !== 'road') { music(SCREEN_MUSIC[curScreen]); ambience('menu'); } } }
+const SOUND_STATES = [[true, true, '音樂、音效：開'], [false, true, '背景音樂：關'], [false, false, '全部靜音']];
+function soundUI(flash) {
+  const k = prefs.sfx ? (prefs.music ? 0 : 1) : 2, b = $('#soundBtn');
+  b.dataset.state = k; b.setAttribute('aria-label', '聲音：' + SOUND_STATES[k][2]); b.title = SOUND_STATES[k][2];
+  if (flash) { const tip = $('#soundTip'); tip.textContent = SOUND_STATES[k][2]; tip.hidden = false; clearTimeout(soundUI.tm); soundUI.tm = setTimeout(() => { tip.hidden = true; }, 1400); }
+}
+function cycleSound() { const k = prefs.sfx ? (prefs.music ? 0 : 1) : 2, [m, s] = SOUND_STATES[(k + 1) % 3]; setPref('music', m); setPref('sfx', s); audio(); soundUI(true); sfx.tap(); }
 const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) { /* 唔支援 */ } };
 
 // ---------- 畫面切換 ----------
 const SCREENS = ['intro', 'written', 'writtenResult', 'roadIntro', 'road', 'result', 'challengeResult'];
-function show(id) { SCREENS.forEach(s => { $('#' + s).hidden = s !== id; }); $('#' + id).scrollTop = 0; }
+function show(id) { SCREENS.forEach(s => { $('#' + s).hidden = s !== id; }); $('#' + id).scrollTop = 0; curScreen = id; music(SCREEN_MUSIC[id]); if (id !== 'road') ambience('menu'); }
 const G = { name: '陳大文', written: 0, stats: null, grade: null, portraits: null, licNo: '' };
 
 // ---------- 考官黃 Sir ----------
@@ -68,7 +64,7 @@ function tickQ() {
 }
 function answer(k) {
   if (WT.answered) return; WT.answered = true; clearInterval(WT.iv);
-  const q = WT.qs[WT.i], right = k === q.a; if (right) { WT.correct++; sfx.ok(); } else sfx.bad();
+  const q = WT.qs[WT.i], right = k === q.a; if (right) { WT.correct++; sfx.right(); } else sfx.wrong();
   $$('.opt').forEach((b, i) => { b.disabled = true; if (i === k) b.classList.add('picked'); if (i === q.a) b.classList.add('answer'); });
   $$('#dots i')[WT.i].dataset.r = right ? 'ok' : 'no';
   const fb = $('#feedback'); fb.className = 'feedback ' + (right ? 'ok' : 'no');
@@ -76,7 +72,7 @@ function answer(k) {
   if (G.portraits) $('#fbFace').src = G.portraits.examiner[right ? 'nod' : 'frown'];
   fb.hidden = false; const nb = $('#nextBtn'); nb.textContent = WT.i < 4 ? '下一題' : '交卷'; nb.hidden = false;
 }
-function nextQ() { sfx.tap(); WT.i++; if (WT.i < 5) renderQ(); else writtenDone(); }
+function nextQ() { sfx.page(); WT.i++; if (WT.i < 5) renderQ(); else writtenDone(); }
 function writtenDone() {
   G.written = WT.correct; const pass = WT.correct >= 4;
   $('#wrScore').textContent = WT.correct; const st = $('#wrStamp'); st.textContent = pass ? '合格' : '肥佬'; st.className = 'stamp ' + (pass ? 'pass' : 'fail');
@@ -113,7 +109,7 @@ function startRoad(mode) {
   $('#hudMode').textContent = mode === 'test' ? '② 路試' : '④ 挑戰模式';
   $('#lives').innerHTML = '<i></i>'.repeat(R.lives); $('#combo').textContent = ''; $('#endOverlay').hidden = true; $('#warn').hidden = true; $('#banner').hidden = true; $('#wet').hidden = true; $('#tags').innerHTML = '';
   $('#road').classList.remove('soaked'); updateButtons(); show('road'); W.resize();
-  exam('neutral', mode === 'test' ? '準備好就出發。' : '挑戰模式。撞一次就完。'); rainOn(.05); showCount(3);
+  exam('neutral', mode === 'test' ? '準備好就出發。' : '挑戰模式。撞一次就完。'); ambience('open'); showCount(3);
 }
 function showCount(v, go) { const c = $('#count'); c.textContent = v; c.hidden = false; c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop'); if (go) setTimeout(() => { c.hidden = true; }, 600); }
 
@@ -141,17 +137,19 @@ function genEvents() {
 
 function step(dt) {
   if (!R.running) {
-    if (R.pre > 0 && !R.ended) { const before = Math.ceil(R.pre); R.pre -= dt; const now = Math.ceil(R.pre); if (R.pre <= 0) { R.running = true; showCount('出發！', true); sfx.ok(); } else if (now !== before) { showCount(now); sfx.tick(); } }
+    if (R.pre > 0 && !R.ended) { const before = Math.ceil(R.pre); R.pre -= dt; const now = Math.ceil(R.pre); if (R.pre <= 0) { R.running = true; showCount('出發！', true); sfx.go(); music('road'); } else if (now !== before) { showCount(now); sfx.count(); } }
     return;
   }
   if (R.ended) return;
   R.t += dt; const m = speedAt(R.t);
   if ((R.state === 'up' || R.state === 'downL' || R.state === 'downR') && R.t >= R.stateUntil) { R.state = 'normal'; updateButtons(); }
   const covered = R.t < R.coverUntil; W.setCovered(covered);
+  ambience(covered ? 'covered' : R.state === 'closed' ? 'closed' : 'open');
+  const fs = Math.floor(R.t * 1.9 * m); if (fs !== R.foot) { R.foot = fs; sfx.step(fs % 2 ? .25 : -.25); }   // 自己嘅腳步聲
   if (R.state === 'closed' && !covered) { R.wet += dt; if (R.wet >= WET) { R.wet = 0; R.wetCount++; R.state = 'normal'; updateButtons(); fault('淋到濕晒！', '冇瓦遮頭仲收住遮，淋到成身濕。', 'wet'); if (R.ended) return; } }
   else R.wet = Math.max(0, R.wet - dt * 2);
   $('#wet').hidden = R.wet <= .05; $('#wetFill').style.width = (R.wet / WET * 100) + '%'; $('#road').classList.toggle('soaked', R.state === 'closed' && !covered);
-  if (R.mode === 'challenge') { const lv = Math.floor(R.t / 10); if (lv > R.level) { R.level = lv; banner(`加速 ×${Math.pow(1.2, lv).toFixed(2)}`); exam('neutral', pick(['快啲喇。', '人多咗。', '仲頂得順？', '考生，專心。'])); sfx.speed(); } }
+  if (R.mode === 'challenge') { const lv = Math.floor(R.t / 10); if (lv > R.level) { R.level = lv; banner(`加速 ×${Math.pow(1.2, lv).toFixed(2)}`); exam('neutral', pick(['快啲喇。', '人多咗。', '仲頂得順？', '考生，專心。'])); sfx.speed(); musicSpeed(Math.min(1.6, Math.pow(1.2, lv)), Math.min(5, lv)); } }
   genEvents();
   for (const e of R.events) {
     if (e.resolved) continue;
@@ -183,7 +181,7 @@ function resolve(e) {
     showWarn(false); R.signs++;
     R.coverUntil = R.t + e.len / e.v + .2;   // 喺瓦遮頭底下：唔使避人、收住遮唔會濕
     if (s === 'closed') { const perf = R.lastActType === 'close' && R.t - R.lastAct <= PERFECT; success(perf, true); }
-    else { sfx.siren(); fault('刮爛招牌！', `遮頂撞落「${e.h ? e.h.name : '招牌'}」。見到招牌要即刻收遮。`, 'sign'); }
+    else { sfx.scrape(); fault('刮爛招牌！', `遮頂撞落「${e.h ? e.h.name : '招牌'}」。見到招牌要即刻收遮。`, 'sign'); }
     return;
   }
   if (R.t < R.coverUntil) return;   // 瓦遮頭底下大家都冇開遮，唔使避
@@ -215,7 +213,7 @@ function success(perfect, isSign) {
 }
 function fault(title, reason, key) {
   R.strikes++; R.combo = 0; R.perfectRun = 0; R.log.push(`${R.t.toFixed(1)} 秒｜${title.replace('！', '')}：${reason}`);
-  $('#road').classList.remove('hit'); void $('#road').offsetWidth; $('#road').classList.add('hit'); buzz([60, 40, 120]); if (key !== 'sign') sfx.bad();
+  $('#road').classList.remove('hit'); void $('#road').offsetWidth; $('#road').classList.add('hit'); buzz([60, 40, 120]); if (key === 'wet') sfx.splash(); else if (key === 'poke') sfx.poke(); else if (key !== 'sign') sfx.bump();
   pop(title, 'bad'); $('#combo').textContent = '';
   const lives = $$('#lives i'); if (lives[R.strikes - 1]) lives[R.strikes - 1].className = 'x';
   if (R.mode === 'challenge') { endRoad('dead', title.replace('！', ''), reason); return; }
@@ -223,13 +221,13 @@ function fault(title, reason, key) {
   exam('frown', Math.random() < SCOLD_P ? SCOLD : FAULTLINES[key] || '睇路呀！');
 }
 function endRoad(kind, title, reason) {
-  R.ended = true; R.running = false; showWarn(false); $('#tags').innerHTML = '';
+  R.ended = true; R.running = false; showWarn(false); music(null); $('#tags').innerHTML = '';
   const ov = $('#endOverlay'), st = $('#endStamp');
   if (kind === 'win') { st.textContent = '路試完成'; st.className = 'end-stamp pass'; $('#endReason').textContent = '捱夠 60 秒。'; exam('nod', '路試完成。'); sfx.win(); }
-  else { st.textContent = kind === 'dead' ? '挑戰結束' : title; st.className = 'end-stamp fail'; $('#endReason').textContent = kind === 'dead' ? `${title}：${reason}` : reason; exam('shock', kind === 'instant' ? '考生遮骨直插途人眼部。' : kind === 'dead' ? '完。' : '三次犯錯，不合格。'); kind === 'instant' ? sfx.siren() : sfx.stamp(); buzz(300); }
+  else { st.textContent = kind === 'dead' ? '挑戰結束' : title; st.className = 'end-stamp fail'; $('#endReason').textContent = kind === 'dead' ? `${title}：${reason}` : reason; exam('shock', kind === 'instant' ? '考生遮骨直插途人眼部。' : kind === 'dead' ? '完。' : '三次犯錯，不合格。'); kind === 'instant' ? sfx.siren() : sfx.fail(); buzz(300); }
   ov.hidden = false;
   setTimeout(() => {
-    R.alive = false; rainOn(0); clearEvents(); W.setMode('menu', 'intro');
+    R.alive = false; clearEvents(); W.setMode('menu', 'intro');
     if (R.mode === 'challenge') challengeDone(title, reason);
     else { G.stats = { strikes: R.strikes, ok: R.ok, perfect: R.perfect, maxCombo: R.maxCombo, log: R.log.slice(), title: titleFor(), completed: kind === 'win' }; finishExam(kind === 'win' ? 'pass' : 'road-fail'); }
   }, 2300);
@@ -239,9 +237,9 @@ function titleFor() { if (R.popoHit) return '阿婆殺手'; if (R.maxPerfectRun 
 // ---------- 掣 ----------
 function act(a) {
   if (!R.alive || !R.running || R.ended) return;
-  sfx.tap(); R.lastAct = R.t; R.lastActType = a;
-  if (a === 'close') R.state = R.state === 'closed' ? 'normal' : 'closed';
-  else { R.state = a; R.stateUntil = R.t + HOLD; }
+  R.lastAct = R.t; R.lastActType = a;
+  if (a === 'close') { R.state = R.state === 'closed' ? 'normal' : 'closed'; R.state === 'closed' ? sfx.close() : sfx.open(); }
+  else { R.state = a; R.stateUntil = R.t + HOLD; a === 'up' ? sfx.raise() : sfx.lower(a === 'downL' ? -1 : 1); }
   W.setUmbrella(R.state); updateButtons();
 }
 function updateButtons() {
@@ -333,13 +331,13 @@ function makeCard(kind) {
   g.fillStyle = '#9a9ca0'; g.font = `700 20px ${FONT}`; g.textAlign = 'right'; g.fillText('遮政署署長', Wc - 44, 600); g.textAlign = 'left';
   g.restore(); return c.toDataURL('image/png');
 }
-function applyTaxi() { sfx.tap(); $('#taxiBtn').hidden = true; const s = $('#taxiStatus'); s.hidden = false; s.textContent = '審批中…'; setTimeout(() => { s.textContent = '批出。你而家可以收錢幫人擔遮。'; const im = $('#taxiImg'); im.src = makeCard('taxi'); im.hidden = false; sfx.stamp(); }, 1500); }
+function applyTaxi() { sfx.tap(); $('#taxiBtn').hidden = true; const s = $('#taxiStatus'); s.hidden = false; s.textContent = '審批中…'; setTimeout(() => { s.textContent = '批出。你而家可以收錢幫人擔遮。'; const im = $('#taxiImg'); im.src = makeCard('taxi'); im.hidden = false; sfx.stamp(); setTimeout(sfx.cash, 250); }, 1500); }
 
 function challengeDone(title, reason) {
   const t = R.t, best = store.get('best', 0), isNew = t > best; if (isNew) store.set('best', t);
   $('#crTime').textContent = t.toFixed(1); $('#crBest').innerHTML = isNew ? '<span class="pill gold">新紀錄</span>' : `最佳紀錄 ${best.toFixed(1)} 秒`;
   $('#crRows').innerHTML = [['最高速度', `×${Math.pow(1.2, Math.floor(t / 10)).toFixed(2)}`], ['錯開', `${R.ok} 個（完美 ${R.perfect}）`], ['最高連擊', `${R.maxCombo}`], ['點死', title ? `${title}` : '—']].map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
-  $('#crReason').textContent = reason || ''; show('challengeResult');
+  $('#crReason').textContent = reason || ''; show('challengeResult'); setTimeout(isNew ? sfx.win : sfx.stamp, 300);
   loadBoard(t);
 }
 
@@ -374,6 +372,8 @@ function boot() {
   try { G.portraits = W.makePortraits(); for (const k of ['full', 'raincoat', 'taxi']) { PHOTO[k] = new Image(); PHOTO[k].src = G.portraits.you[k]; } exam('neutral'); } catch (e) { G.portraits = null; }
   $('#nameInput').value = store.get('name', ''); G.name = store.get('name', '') || G.name;
   const unlocked = store.get('unlocked', false); $('#introChallengeBtn').hidden = !unlocked;
+  window.addEventListener('pointerdown', audio, true); window.addEventListener('keydown', audio, true);   // 第一下撳就開聲（手機規定）
+  $('#soundBtn').addEventListener('click', cycleSound); soundUI(false);
   $('#startBtn').addEventListener('click', startWritten);
   $('#introChallengeBtn').addEventListener('click', () => { G.name = ($('#nameInput').value || '').trim() || G.name; store.set('name', G.name); startRoad('challenge'); });
   $('#nextBtn').addEventListener('click', nextQ);
