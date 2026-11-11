@@ -198,3 +198,26 @@ body.ready .loading { display: none; }
 .sound-btn[data-state="2"] .w1, .sound-btn[data-state="2"] .w2, .sound-btn[data-state="2"] .note { display: none; }
 .sound-btn[data-state="2"] .x { display: inline; stroke: var(--red); }
 .sound-tip { position: fixed; z-index: 30; left: max(10px, env(safe-area-inset-left)); top: calc(max(10px, env(safe-area-inset-top)) + 44px); background: var(--ink); color: #fff; font-weight: 900; font-size: 14px; padding: 6px 10px; border-radius: 10px; pointer-events: none; }
+
+/* 路試練習：教練卡（畫面底部）、要撳嘅掣發光、其他掣變淡 */
+#road.tut .exam { display: none; }
+.coach { position: absolute; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: 12px; max-width: 520px; margin: 0 auto; background: #fff; color: var(--ink); border-radius: 18px; padding: 12px 14px; box-shadow: 0 0 0 3px var(--ink), 0 12px 30px -10px rgba(0,0,0,.6); font-weight: 900; font-size: 17px; line-height: 1.5; z-index: 5; }
+.coach p { margin: 0; }
+.coach b { color: var(--red); }
+.coach .ck { display: inline-block; padding: 0 .55em; border-radius: 999px; color: #fff; line-height: 1.45; }
+.coach .ck.up { background: var(--blue); } .coach .ck.down { background: var(--orange); }
+.coach .ck.either { background: #fff; color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
+.coach .ck.now { background: var(--gold); color: var(--ink); } .coach .ck.no { background: var(--red); }
+.coach-btns { display: flex; gap: 8px; margin-top: 10px; } .coach-btns:empty { display: none; }
+.coach-btns .btn { padding: 11px 14px; font-size: 18px; }
+.coach.shake { animation: cshake .35s; }
+@keyframes cshake { 25% { transform: translateX(-9px); } 75% { transform: translateX(9px); } }
+.controls.coaching .cbtn:not(.target) { opacity: .28; }
+.cbtn.target { animation: target .9s ease-in-out infinite; }
+@keyframes target { 0%, 100% { box-shadow: inset 0 0 0 4px var(--gold); } 50% { box-shadow: inset 0 0 0 4px var(--gold), 0 0 0 7px rgba(255,201,74,.6); filter: brightness(1.2); } }
+/* 標籤：「撳！」時機、後面嘅人變淡、教學聚焦 */
+.tag em { font-style: normal; background: var(--gold); color: var(--ink); border-radius: 999px; padding: 1px 8px; margin-left: 5px; font-size: 15px; }
+.tag.now { box-shadow: 0 0 0 3px var(--gold), 0 4px 12px -4px rgba(0,0,0,.4); animation: tagnow .42s ease-in-out infinite alternate; }
+@keyframes tagnow { to { transform: translate(-50%, -100%) scale(1.13); } }
+.tag.later { opacity: .5; transform: translate(-50%, -100%) scale(.86); }
+.tag.focus { box-shadow: 0 0 0 4px #fff, 0 0 0 8px var(--red); animation: none; }

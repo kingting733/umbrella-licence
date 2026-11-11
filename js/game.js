@@ -1,8 +1,8 @@
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=12';
-import * as W from './scene.js?v=12';
-import { submitScore, getBoard } from './board.js?v=12';
-import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=12';
+import { QUESTIONS, SIGNS } from './questions.js?v=13';
+import * as W from './scene.js?v=13';
+import { submitScore, getBoard } from './board.js?v=13';
+import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=13';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -96,22 +96,119 @@ const CM = { popo: 155, kid: 132, flyer: 160, ol: 167, phone: 171, rider: 175, m
 // 節奏：行慢啲（VWALK / VREL）、人少啲（GAP：每個人之間隔 2.6–3.4 秒）、撳完把遮維持耐啲（HOLD）
 const VWALK = 1.2, VREL = 2.2, HOLD = 1.6, PERFECT = .4, WET = 2.0, TEST_LEN = 60, HINT_UNTIL = 20, GAP = [2.6, 3.4], WARN_SIGN = 1.6;
 // 高過你嘅人：佢喺邊邊行過，就將遮壓低去另一邊（左邊嚟 → 壓低 →），讓佢把遮喺你上面過
+// 離擦身 1.45 秒內個牌閃「撳！」：撳完把遮維持 1.6 秒，啱啱好包住擦身嗰下（之前個牌喺擦身前 1 秒就收埋，撳嘅時機淨係得 0.6 秒）
+const NOW_T = 1.45;
 const awaySide = side => side < 0 ? 'downR' : 'downL';
 const awayArrow = side => side < 0 ? '壓低 →' : '← 壓低';
 const R = { alive: false };
 const speedAt = t => R.mode === 'challenge' ? Math.pow(1.2, Math.floor(t / 10)) : 1;
 
 function startRoad(mode) {
-  audio(); clearEvents(); W.roadReset(); W.setMode('road');
-  Object.assign(R, { mode, alive: true, running: false, ended: false, pre: 3.2, t: 0, state: 'normal', stateUntil: 0, lastAct: -9, lastActType: '', coverUntil: -1, wet: 0,
+  audio(); clearEvents(); W.roadReset(); W.setMode('road'); coachHide();
+  const tut = mode === 'tutorial';
+  Object.assign(R, { mode, alive: true, running: tut, ended: false, pre: tut ? 0 : 3.2, coach: null, tut: tut ? { done: new Set(), lesson: 0, idle: null, miss: 0, exitFor: null } : null, t: 0, state: 'normal', stateUntil: 0, lastAct: -9, lastActType: '', coverUntil: -1, wet: 0,
     strikes: 0, lives: mode === 'test' ? 3 : 1, log: [], ok: 0, perfect: 0, combo: 0, maxCombo: 0, perfectRun: 0, maxPerfectRun: 0, wetCount: 0, signs: 0, signPerfect: 0, popoHit: false,
     events: [], lastCover: 0, lastContact: 1.4, lastKind: '', lastType: '', nextSignAt: 8 + rand(0, 2), level: 0, lastTs: 0 });
-  $('#hudMode').textContent = mode === 'test' ? '② 路試' : '④ 挑戰模式';
-  $('#lives').innerHTML = '<i></i>'.repeat(R.lives); $('#combo').textContent = ''; $('#endOverlay').hidden = true; $('#warn').hidden = true; $('#banner').hidden = true; $('#wet').hidden = true; $('#tags').innerHTML = '';
+  if (tut) buildTutorial();
+  $('#hudMode').textContent = mode === 'test' ? '② 路試' : tut ? '② 路試練習' : '④ 挑戰模式';
+  $('#lives').innerHTML = tut ? '' : '<i></i>'.repeat(R.lives); $('#road').classList.toggle('tut', tut); if (tut) $('#hudTime').textContent = '練習'; $('#combo').textContent = ''; $('#endOverlay').hidden = true; $('#warn').hidden = true; $('#banner').hidden = true; $('#wet').hidden = true; $('#tags').innerHTML = '';
   $('#road').classList.remove('soaked'); updateButtons(); show('road'); W.resize();
-  exam('neutral', mode === 'test' ? '準備好就出發。' : '挑戰模式。撞一次就完。'); ambience('open'); showCount(3);
+  exam('neutral', mode === 'test' ? '準備好就出發。' : '挑戰模式。撞一次就完。'); ambience('open');
+  if (tut) { $('#count').hidden = true; music('road'); } else showCount(3);
 }
 function showCount(v, go) { const c = $('#count'); c.textContent = v; c.hidden = false; c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop'); if (go) setTimeout(() => { c.hidden = true; }, 600); }
+
+// ================= 路試練習（教學）=================
+// 逐課教：藍牌 → 橙牌（左）→ 橙牌（右）→ 白牌 → 瓦遮頭。到要撳嘅時候停低、亮住要撳嘅掣，撳啱先繼續；最後自己試 5 個（唔停、唔計分）
+// p: [人, 邊（-1 左 / 1 右）, 擦身秒數]；s: [瓦遮頭款式, 長度米, 秒數]
+const TUT = [
+  { at: .3, start: true, text: '路試之前練一練。迎面嘅人頭頂有個牌：<br><b>顏色</b> → 撳邊個掣　<b>箭咀</b> → 壓低去邊　<b>「撳！」</b> → 幾時撳' },
+  { lesson: 1, p: ['kid', 1, 6], appear: '<span class="ck up">藍牌</span> = 矮過你 → 撳 <b>舉高</b>。<br>唔好即刻撳：等個牌閃 <span class="ck now">撳！</span> 先撳。', want: ['up'], now: '個牌閃「撳！」喇 → 撳 <b>舉高</b>！' },
+  { lesson: 2, p: ['muscle', -1, 12], appear: '<span class="ck down">橙牌</span> = 高過你 → 要 <b>壓低</b>。<br>佢喺<b>左邊</b>嚟，箭咀指 <b>→</b>：壓低去右邊，讓佢把遮喺你上面過。', want: ['downR'], now: '跟住箭咀 → 撳 <b>壓低 →</b>！' },
+  { lesson: 3, p: ['rider', 1, 17.5], appear: '今次佢喺<b>右邊</b>嚟，箭咀指 <b>←</b>。<br>記住：<b>箭咀指邊，就撳邊</b>。', want: ['downL'], now: '撳 <b>← 壓低</b>！' },
+  { lesson: 4, p: ['phone', -1, 23], appear: '<span class="ck either">白牌</span> = 同你差唔多高：<br><b>舉高</b>或者<b>跟箭咀壓低</b>都得。', want: ['up', 'downR'], now: '揀一個：<b>舉高</b> 或者 <b>壓低 →</b>' },
+  { lesson: 5, s: ['arcade', 5, 29], warn: '頭頂有騎樓！見到紅色警告 → 撳 <b>緊急收遮</b>。', under: '瓦遮頭底下大家都收咗遮，<b>唔使避人</b>。', exit: '行出瓦遮頭 → 即刻撳 <b>開遮</b>，唔係會淋濕。' },
+  { at: 34.6, practice: true, text: '最後自己試 5 個：唔會停、唔計分。<br>記住三步：<b>睇顏色 → 睇箭咀 → 等「撳！」</b>' },
+  { p: ['popo', -1, 40] }, { p: ['baller', 1, 43.4] }, { p: ['ol', 1, 46.8] }, { p: ['tourist', -1, 50.2] }, { p: ['phone', 1, 53.6] },
+];
+const TUT_END = 55.4, TUT_IDLE = '自己試：<b>睇顏色 → 睇箭咀 → 等「撳！」</b>';
+function buildTutorial() {
+  R.events = []; R.lastContact = 1e9;   // 唔使 genEvents
+  for (const c of TUT) {
+    if (c.p) { const [type, side, contact] = c.p; R.events.push({ kind: 'person', contact, type, side, v: VREL * PEOPLE[type].f, spawned: false, resolved: false, walk0: Math.random() * 6, c }); }
+    if (c.s) { const [style, len, contact] = c.s; R.events.push({ kind: 'sign', contact, style, len, v: VWALK, spawned: false, resolved: false, warned: false, c }); }
+  }
+}
+// 每格檢查要唔要停低教嘢；停低就回傳 true
+function tutTriggers() {
+  const D = R.tut.done, first = R.events.find(e => !e.resolved);
+  for (let k = 0; k < TUT.length; k++) {
+    const c = TUT[k]; if (c.at == null || D.has(k) || R.t < c.at) continue; D.add(k);
+    if (c.practice) { R.tut.lesson = 6; tutLabel(); R.tut.idle = TUT_IDLE; coach({ text: c.text, btns: [['開始', coachGo]], block: true }); }
+    else coach({ text: c.text, btns: [['開始練習', coachGo], ['跳過，直接路試', () => startRoad('test'), 'ghost']], block: true });
+    return true;
+  }
+  for (const e of R.events) {
+    if (e.resolved || !e.c) continue;
+    const c = e.c, k = TUT.indexOf(c), left = e.contact - R.t;
+    if (e.kind === 'person' && c.appear) {
+      if (!D.has(k + 'a') && e === first && e.spawned && left * e.v < 12) { D.add(k + 'a'); R.tut.lesson = c.lesson; tutLabel(); coach({ text: c.appear, btns: [['知道', coachGo]], block: true, ev: e }); return true; }
+      if (!D.has(k + 'n') && left <= 1.2) {
+        D.add(k + 'n'); if (c.want.includes(R.state) && R.stateUntil >= e.contact) return false;   // 自己撳啱咗就唔使停
+        coach({ text: c.now, want: c.want, block: true, ev: e }); return true;
+      }
+    }
+    if (e.kind === 'sign' && c.warn && !D.has(k + 'w') && left <= 1.25) {
+      D.add(k + 'w'); R.tut.lesson = c.lesson; tutLabel(); if (R.state === 'closed') return false;
+      coach({ text: c.warn, want: ['close'], block: true }); return true;
+    }
+  }
+  const sg = R.tut.exitFor;
+  if (sg && !D.has('exit') && R.t >= R.coverUntil - .15) { D.add('exit'); if (R.state !== 'closed') return false; coach({ text: sg.exit, want: ['close'], block: true }); return true; }
+  return false;
+}
+function tutLabel() { $('#hudTime').textContent = R.tut.lesson >= 6 ? '自己試' : `第 ${R.tut.lesson}／5 課`; }
+function tutFault(title, reason, key) {
+  R.combo = 0; R.perfectRun = 0; $('#combo').textContent = '';
+  $('#road').classList.remove('hit'); void $('#road').offsetWidth; $('#road').classList.add('hit'); buzz([60, 40, 120]);
+  if (key === 'wet') sfx.splash(); else if (key === 'poke') sfx.poke(); else if (key !== 'sign') sfx.bump();
+  pop(title, 'bad'); if (R.tut.lesson >= 6) R.tut.miss++;
+  coachSay(`<b>${title}</b>${reason}`, 3.4);
+}
+function tutorialDone() {
+  R.ended = true; R.running = false; music(null); sfx.win(); store.set('tutDone', true); $('#tags').innerHTML = ''; R.tut.idle = null;
+  const m = R.tut.miss;
+  coach({ text: `練習完成！${m ? `自己試錯咗 ${m} 次，可以再練多次。` : '自己試 5 個全部過晒！'}<br>正式路試一樣：<b>睇顏色 → 睇箭咀 → 等「撳！」</b>`,
+    btns: [['開始路試', () => startRoad('test')], ['再練一次', () => startRoad('tutorial'), 'ghost']], block: true });
+}
+// 教練卡（畫面底部）
+function coach({ text, btns = [], block = false, want = null, ev = null }) {
+  R.coach = { block, want, ev, text }; clearTimeout(coach.tm);
+  const el = $('#coach'); el.hidden = false; el.classList.remove('shake'); $('#coachText').innerHTML = text;
+  const bb = $('#coachBtns'); bb.innerHTML = '';
+  for (const [label, fn, cls] of btns) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ' + (cls || ''); b.textContent = label; b.addEventListener('click', () => { sfx.tap(); fn(); }); bb.appendChild(b); }
+  $$('.cbtn').forEach(b => b.classList.toggle('target', !!want && want.includes(b.dataset.act)));
+  $('.controls').classList.toggle('coaching', !!want);
+}
+function coachIdle() { const el = $('#coach'); if (R.tut && R.tut.idle && !R.ended) { el.hidden = false; $('#coachText').innerHTML = R.tut.idle; $('#coachBtns').innerHTML = ''; } else el.hidden = true; }
+function coachGo() { R.coach = null; $$('.cbtn').forEach(b => b.classList.remove('target')); $('.controls').classList.remove('coaching'); coachIdle(); }
+function coachHide() { R.coach = null; clearTimeout(coach.tm); $('#coach').hidden = true; $$('.cbtn').forEach(b => b.classList.remove('target')); $('.controls').classList.remove('coaching'); }
+function coachSay(text, secs) {
+  if (R.coach && R.coach.block) return; clearTimeout(coach.tm);
+  const el = $('#coach'); el.hidden = false; $('#coachText').innerHTML = text; $('#coachBtns').innerHTML = '';
+  coach.tm = setTimeout(() => { if (!(R.coach && R.coach.block)) coachIdle(); }, secs * 1000);
+}
+function coachWrong() {
+  const c = R.coach, el = $('#coach'); sfx.wrong(); buzz(80);
+  if (c.want) $('#coachText').innerHTML = '<span class="ck no">唔係呢個掣</span><br>' + c.text;
+  el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+}
+function setupRoadIntro() {
+  const done = store.get('tutDone', false), t = $('#tutBtn'), r = $('#roadStartBtn');
+  t.className = 'btn' + (done ? ' ghost' : ''); t.textContent = done ? '再練一次' : '先練習（約 1 分鐘）';
+  r.className = 'btn' + (done ? '' : ' ghost'); r.textContent = done ? '開始路試' : '跳過練習，直接路試';
+  if (done) t.before(r); else r.before(t);
+}
 
 function genEvents() {
   while (R.lastContact - R.t < 4.5) {
@@ -141,6 +238,7 @@ function step(dt) {
     return;
   }
   if (R.ended) return;
+  if (R.mode === 'tutorial') { if (R.coach && R.coach.block) return; if (tutTriggers()) return; if (R.t >= TUT_END) { tutorialDone(); return; } }
   R.t += dt; const m = speedAt(R.t);
   if ((R.state === 'up' || R.state === 'downL' || R.state === 'downR') && R.t >= R.stateUntil) { R.state = 'normal'; updateButtons(); }
   const covered = R.t < R.coverUntil; W.setCovered(covered);
@@ -150,7 +248,7 @@ function step(dt) {
   else R.wet = Math.max(0, R.wet - dt * 2);
   $('#wet').hidden = R.wet <= .05; $('#wetFill').style.width = (R.wet / WET * 100) + '%'; $('#road').classList.toggle('soaked', R.state === 'closed' && !covered);
   if (R.mode === 'challenge') { const lv = Math.floor(R.t / 10); if (lv > R.level) { R.level = lv; banner(`加速 ×${Math.pow(1.2, lv).toFixed(2)}`); exam('neutral', pick(['快啲喇。', '人多咗。', '仲頂得順？', '考生，專心。'])); sfx.speed(); musicSpeed(Math.min(1.6, Math.pow(1.2, lv)), Math.min(5, lv)); } }
-  genEvents();
+  if (R.mode !== 'tutorial') genEvents();
   for (const e of R.events) {
     if (e.resolved) continue;
     const z = -(e.contact - R.t) * e.v;
@@ -172,7 +270,8 @@ function step(dt) {
   }
   R.events = R.events.filter(e => !e.resolved || e.spawned);
   if (R.mode === 'test') { const left = Math.max(0, TEST_LEN - R.t); $('#hudTime').textContent = left.toFixed(1); $('#tbarFill').style.width = (R.t / TEST_LEN * 100) + '%'; if (R.t >= TEST_LEN) endRoad('win'); }
-  else { $('#hudTime').textContent = R.t.toFixed(1) + ' 秒'; $('#tbarFill').style.width = ((R.t % 10) / 10 * 100) + '%'; }
+  else if (R.mode === 'challenge') { $('#hudTime').textContent = R.t.toFixed(1) + ' 秒'; $('#tbarFill').style.width = ((R.t % 10) / 10 * 100) + '%'; }
+  else $('#tbarFill').style.width = (Math.min(1, R.t / TUT_END) * 100) + '%';
 }
 
 function resolve(e) {
@@ -180,6 +279,7 @@ function resolve(e) {
   if (e.kind === 'sign') {
     showWarn(false); R.signs++;
     R.coverUntil = R.t + e.len / e.v + .2;   // 喺瓦遮頭底下：唔使避人、收住遮唔會濕
+    if (R.mode === 'tutorial') { R.tut.exitFor = e.c; if (s === 'closed') coachSay(e.c.under, 2.6); }
     if (s === 'closed') { const perf = R.lastActType === 'close' && R.t - R.lastAct <= PERFECT; success(perf, true); }
     else { sfx.scrape(); fault('刮爛招牌！', `遮頂撞落「${e.h ? e.h.name : '招牌'}」。見到招牌要即刻收遮。`, 'sign'); }
     return;
@@ -192,6 +292,7 @@ function resolve(e) {
   else if (p.need === 'down') ok = s === mySide;
   else ok = s === 'up' || s === mySide;
   if (ok) { success(s !== 'closed' && R.t - R.lastAct <= PERFECT, false); return; }
+  if (e.type === 'popo' && R.mode === 'tutorial') { fault('插中阿婆！', '阿婆係藍牌：一定要撳【舉高】。正式路試插中佢即時肥佬。', 'poke'); return; }
   if (e.type === 'popo') { R.popoHit = true; endRoad('instant', '即時取消資格', '遮骨直插阿婆眼部。'); return; }
   const sw = e.side < 0 ? '左' : '右', other = e.side < 0 ? '右' : '左', arrow = awayArrow(e.side);
   if (isDown && s !== mySide && p.need !== 'up') fault('壓錯邊！', `${p.name}喺你${sw}邊行過，要將遮壓低去${other}邊【${arrow}】。`, 'side');
@@ -212,6 +313,7 @@ function success(perfect, isSign) {
   if (perfect && Math.random() < .6) exam('nod', pick(PERFLINES)); else if (R.combo % 5 === 0) exam('nod', `連擊 ${R.combo}，唔錯。`); else if (Math.random() < .25) exam('neutral', pick(OKLINES));
 }
 function fault(title, reason, key) {
+  if (R.mode === 'tutorial') { tutFault(title, reason, key); return; }
   R.strikes++; R.combo = 0; R.perfectRun = 0; R.log.push(`${R.t.toFixed(1)} 秒｜${title.replace('！', '')}：${reason}`);
   $('#road').classList.remove('hit'); void $('#road').offsetWidth; $('#road').classList.add('hit'); buzz([60, 40, 120]); if (key === 'wet') sfx.splash(); else if (key === 'poke') sfx.poke(); else if (key !== 'sign') sfx.bump();
   pop(title, 'bad'); $('#combo').textContent = '';
@@ -237,6 +339,7 @@ function titleFor() { if (R.popoHit) return '阿婆殺手'; if (R.maxPerfectRun 
 // ---------- 掣 ----------
 function act(a) {
   if (!R.alive || !R.running || R.ended) return;
+  if (R.coach && R.coach.block) { if (!R.coach.want || !R.coach.want.includes(a)) { coachWrong(); return; } coachGo(); }
   R.lastAct = R.t; R.lastActType = a;
   if (a === 'close') { R.state = R.state === 'closed' ? 'normal' : 'closed'; R.state === 'closed' ? sfx.close() : sfx.open(); }
   else { R.state = a; R.stateUntil = R.t + HOLD; a === 'up' ? sfx.raise() : sfx.lower(a === 'downL' ? -1 : 1); }
@@ -256,9 +359,10 @@ function showWarn(on) { $('#warn').hidden = !on; }
 function banner(text) { const b = $('#banner'); b.textContent = text; b.hidden = false; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go'); clearTimeout(banner.tm); banner.tm = setTimeout(() => { b.hidden = true; }, 1600); }
 function drawTags() {
   const box = $('#tags'); if (!R.running) return;
-  const hint = R.mode === 'test' && R.t < HINT_UNTIL, want = [];
+  const hint = (R.mode === 'test' && R.t < HINT_UNTIL) || R.mode === 'tutorial', want = [];
+  const next = R.events.find(e => e.kind === 'person' && !e.resolved);   // 最近嗰個先係要處理嘅
   for (const e of R.events) if (e.kind === 'person' && e.spawned && !e.resolved) {
-    const z = -(e.contact - R.t) * e.v; if (z < -15 || z > -2.2) continue;
+    const left = e.contact - R.t, z = -left * e.v; if (z < -15 || left < .12) continue;
     const s = W.npcScreen(e.n); if (!s.ok) continue; want.push({ e, s });
   }
   const els = [...box.children];
@@ -267,8 +371,9 @@ function drawTags() {
     const w = want[i]; if (!w) { el.style.display = 'none'; return; }
     const p = PEOPLE[w.e.type], arrow = w.e.side < 0 ? '→' : '←';   // 箭咀 = 要壓低嘅方向（佢嘅另一邊）
     const hintTxt = !hint ? '' : p.need === 'up' ? '舉高' : p.need === 'down' ? awayArrow(w.e.side) : '舉高 / ' + awayArrow(w.e.side);
-    el.style.display = ''; el.className = 'tag ' + p.need;
-    el.innerHTML = `<b>${CM[w.e.type]}cm</b> ${p.name}${p.need !== 'up' ? `<i>${arrow}</i>` : ''}${hintTxt ? `<small>${hintTxt}</small>` : ''}`;
+    const now = w.e.contact - R.t <= NOW_T && w.e.contact >= R.coverUntil;
+    el.style.display = ''; el.className = 'tag ' + p.need + (now ? ' now' : '') + (w.e !== next ? ' later' : '') + (R.coach && R.coach.ev === w.e ? ' focus' : '');
+    el.innerHTML = `<b>${CM[w.e.type]}cm</b> ${p.name}${p.need !== 'up' ? `<i>${arrow}</i>` : ''}${hintTxt ? `<small>${hintTxt}</small>` : ''}${now ? '<em>撳！</em>' : ''}`;
     const bw = box.clientWidth, half = el.offsetWidth / 2 + 8;   // 唔好俾標籤出咗畫面
     el.style.left = Math.min(bw - half, Math.max(half, w.s.x * bw)) + 'px'; el.style.top = (Math.max(.14, w.s.y) * 100) + '%';
   });
@@ -364,7 +469,7 @@ let last = 0;
 function loop(ts) {
   const dt = Math.min(.05, Math.max(0, (ts - (last || ts)) / 1000)); last = ts;
   if (R.alive) { step(dt); drawTags(); if (R.running && R.state !== 'normal' && R.state !== 'closed') { const k = Math.max(0, (R.stateUntil - R.t) / HOLD); $$('.cbtn').forEach(b => b.style.setProperty('--hold', b.dataset.act === R.state ? k : 0)); } else $$('.cbtn').forEach(b => b.style.setProperty('--hold', 0)); }
-  W.frame(dt, R.alive && R.running ? VWALK * speedAt(R.t) : R.alive ? 0 : 0);
+  W.frame(dt, R.alive && R.running && !(R.coach && R.coach.block) ? VWALK * speedAt(R.t) : 0);
   requestAnimationFrame(loop);
 }
 function boot() {
@@ -377,8 +482,9 @@ function boot() {
   $('#startBtn').addEventListener('click', startWritten);
   $('#introChallengeBtn').addEventListener('click', () => { G.name = ($('#nameInput').value || '').trim() || G.name; store.set('name', G.name); startRoad('challenge'); });
   $('#nextBtn').addEventListener('click', nextQ);
-  $('#wrBtn').addEventListener('click', () => { sfx.tap(); if (G.written >= 4) { W.setMode('menu', 'intro'); show('roadIntro'); } else { G.stats = null; finishExam('written-fail'); } });
+  $('#wrBtn').addEventListener('click', () => { sfx.tap(); if (G.written >= 4) { W.setMode('menu', 'intro'); setupRoadIntro(); show('roadIntro'); } else { G.stats = null; finishExam('written-fail'); } });
   $('#roadStartBtn').addEventListener('click', () => startRoad('test'));
+  $('#tutBtn').addEventListener('click', () => startRoad('tutorial'));
   $('#retryBtn').addEventListener('click', () => { sfx.tap(); W.setMode('menu', 'intro'); $('#introChallengeBtn').hidden = !store.get('unlocked', false); show('intro'); });
   $('#challengeBtn').addEventListener('click', () => startRoad('challenge'));
   $('#taxiBtn').addEventListener('click', applyTaxi);
@@ -387,6 +493,7 @@ function boot() {
   $$('.cbtn').forEach(b => b.addEventListener('pointerdown', ev => { ev.preventDefault(); act(b.dataset.act); }));
   window.addEventListener('keydown', ev => {
     if ($('#road').hidden) return; const k = ev.key;
+    if (k === 'Enter') { const b = $('#coachBtns button'); if (b && !$('#coach').hidden) { ev.preventDefault(); b.click(); } return; }
     const a = (k === 'ArrowUp' || k === 'w' || k === 'W') ? 'up' : (k === 'ArrowLeft' || k === 'a' || k === 'A') ? 'downL' : (k === 'ArrowRight' || k === 'd' || k === 'D') ? 'downR' : (k === ' ' || k === 'ArrowDown' || k === 's' || k === 'S') ? 'close' : null;
     if (a) { ev.preventDefault(); if (!ev.repeat) act(a); }
   });

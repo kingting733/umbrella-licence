@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap">
-<link rel="stylesheet" href="css/style.css?v=12">
+<link rel="stylesheet" href="css/style.css?v=13">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -87,8 +87,9 @@
         <div class="rule"><span class="chip either">任揀</span><p>白牌：同你差唔多高，舉高或者壓低去佢嘅另一邊都得。</p></div>
         <div class="rule"><span class="chip close">緊急收遮</span><p>頭頂有招牌或者騎樓，見到警告就收遮。瓦遮頭底下行 3–5 秒，唔使避人；行出嚟再撳掣開返。冇瓦遮頭收遮超過 2 秒會淋濕。</p></div>
       </div>
-      <p class="fine">撳完把遮會維持 1.6 秒，要睇準先撳；擦身前 0.4 秒內撳啱有 PERFECT。電腦：← ↑ → 方向鍵，空白鍵收遮。</p>
-      <button class="btn" id="roadStartBtn" type="button">開始路試</button>
+      <p class="fine">個牌閃<b>「撳！」</b>先撳（撳完把遮維持 1.6 秒，太早撳會縮返落嚟）；擦身前 0.4 秒內撳啱有 PERFECT。電腦：← ↑ → 方向鍵，空白鍵收遮。</p>
+      <button class="btn" id="tutBtn" type="button">先練習（約 1 分鐘）</button>
+      <button class="btn ghost" id="roadStartBtn" type="button">跳過練習，直接路試</button>
     </div>
   </section>
 
@@ -109,6 +110,7 @@
       <div class="wet" id="wet" hidden><span>淋緊雨</span><b><i id="wetFill"></i></b></div>
       <div class="exam" id="exam" data-mood="neutral"><img id="examFace" alt=""><p><small>考官 黃 Sir</small><span id="examText">準備好就出發。</span></p></div>
       <div class="count" id="count" hidden>3</div>
+      <div class="coach" id="coach" hidden><p id="coachText"></p><div class="coach-btns" id="coachBtns"></div></div>
       <div class="end" id="endOverlay" hidden><div class="end-stamp" id="endStamp">路試完成</div><p id="endReason"></p></div>
     </div>
     <div class="controls">
@@ -161,6 +163,6 @@
   <svg class="note" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/><path class="slash" d="M3 3l18 18"/></svg>
 </button>
 <div class="sound-tip" id="soundTip" hidden></div>
-<script type="module" src="js/game.js?v=12"></script>
+<script type="module" src="js/game.js?v=13"></script>
 </body>
 </html>
