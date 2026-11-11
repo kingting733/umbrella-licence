@@ -1,7 +1,7 @@
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=7';
-import * as W from './scene.js?v=7';
-import { submitScore, getBoard } from './board.js?v=7';
+import { QUESTIONS, SIGNS } from './questions.js?v=8';
+import * as W from './scene.js?v=8';
+import { submitScore, getBoard } from './board.js?v=8';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);

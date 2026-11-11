@@ -2,7 +2,7 @@
 // 頭頂招牌 / 騎樓、選單畫面嘅「你」公仔、牌照相同考官頭像
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { V3, rng, vinyl, matte, mesh, ell, group, canvas, tex, hex, F, makePerson, posePerson, makePhone, makeCar, makeUmbrella, makeRain, tower, PAINT, surfTex, makeTrolley } from './toy.js?v=7';
+import { V3, rng, vinyl, matte, mesh, ell, group, canvas, tex, hex, F, makePerson, posePerson, makePhone, makeCar, makeUmbrella, makeRain, tower, PAINT, surfTex, makeTrolley } from './toy.js?v=8';
 
 export const INK = '#16181d', RED = '#e23b3b', GOLD = '#ffc94a', GREEN = '#3aa36b', BLUE = '#2e6fd8', ORANGE = '#f08a24';
 
