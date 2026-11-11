@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap">
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=5">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -126,7 +126,7 @@
     </div>
   </section>
 
-  <section id="challengeResult" class="screen center" hidden>
+  <section id="challengeResult" class="screen" hidden>
     <div class="topbar"><span class="pill">④ 挑戰模式</span></div>
     <div class="panel tight">
       <p class="fine center">生存時間</p>
@@ -134,11 +134,16 @@
       <p class="line" id="crBest"></p>
       <table class="sheet"><tbody id="crRows"></tbody></table>
       <p class="fine center" id="crReason"></p>
+      <div class="board">
+        <div class="board-head"><span class="pill gold">排行榜 TOP 20</span><span class="board-me" id="boardMe"></span></div>
+        <ol class="board-list" id="boardList"></ol>
+        <p class="fine center" id="boardStatus">載入緊排行榜…</p>
+      </div>
       <button class="btn" id="crAgain" type="button">再挑戰</button>
       <button class="btn ghost" id="crBack" type="button">返去領牌處</button>
     </div>
   </section>
 </main>
-<script type="module" src="js/game.js?v=4"></script>
+<script type="module" src="js/game.js?v=5"></script>
 </body>
 </html>

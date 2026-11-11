@@ -1,6 +1,7 @@
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=4';
-import * as W from './scene.js?v=4';
+import { QUESTIONS, SIGNS } from './questions.js?v=5';
+import * as W from './scene.js?v=5';
+import { submitScore, getBoard } from './board.js?v=5';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -334,6 +335,25 @@ function challengeDone(title, reason) {
   $('#crTime').textContent = t.toFixed(1); $('#crBest').innerHTML = isNew ? '<span class="pill gold">新紀錄</span>' : `最佳紀錄 ${best.toFixed(1)} 秒`;
   $('#crRows').innerHTML = [['最高速度', `×${Math.pow(1.2, Math.floor(t / 10)).toFixed(2)}`], ['錯開', `${R.ok} 個（完美 ${R.perfect}）`], ['最高連擊', `${R.maxCombo}`], ['點死', title ? `${title}` : '—']].map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
   $('#crReason').textContent = reason || ''; show('challengeResult');
+  loadBoard(t);
+}
+
+// ---------- 挑戰模式排行榜 ----------
+let boardSeq = 0;
+async function loadBoard(t) {
+  const seq = ++boardSeq, list = $('#boardList'), status = $('#boardStatus');
+  list.innerHTML = ''; $('#boardMe').textContent = ''; status.hidden = false; status.textContent = '上載成績、載入排行榜…';
+  try {
+    try { await submitScore(G.name, t); } catch (e) { /* 上載失敗都照樣顯示排行榜 */ }
+    const b = await getBoard(); if (seq !== boardSeq) return;
+    const row = (r, cls) => { const li = document.createElement('li'); if (cls) li.className = cls; for (const [c, v] of [['r', r.rank], ['n', r.name], ['s', Number(r.seconds).toFixed(1) + ' 秒']]) { const s = document.createElement('span'); s.className = c; s.textContent = v; li.appendChild(s); } return li; };
+    (b.top || []).forEach(r => list.appendChild(row(r, r.me ? 'me' : '')));
+    if (b.me && !(b.top || []).some(r => r.me)) { const g = document.createElement('li'); g.className = 'gap'; g.textContent = '⋯'; list.appendChild(g); list.appendChild(row(b.me, 'me')); }
+    if (b.me) $('#boardMe').innerHTML = `你排第 <b>${Number(b.me.rank)}</b> 名／共 ${Number(b.total)} 人`;
+    status.hidden = (b.top || []).length > 0; status.textContent = '暫時未有紀錄。';
+  } catch (e) {
+    if (seq === boardSeq) status.textContent = '排行榜暫時連唔到，遲啲再試。';
+  }
 }
 
 // ================= 主迴圈、事件 =================
@@ -347,10 +367,10 @@ function loop(ts) {
 function boot() {
   W.initWorld($('#world'));
   try { G.portraits = W.makePortraits(); for (const k of ['full', 'raincoat', 'taxi']) { PHOTO[k] = new Image(); PHOTO[k].src = G.portraits.you[k]; } exam('neutral'); } catch (e) { G.portraits = null; }
-  $('#nameInput').value = store.get('name', '');
+  $('#nameInput').value = store.get('name', ''); G.name = store.get('name', '') || G.name;
   const unlocked = store.get('unlocked', false); $('#introChallengeBtn').hidden = !unlocked;
   $('#startBtn').addEventListener('click', startWritten);
-  $('#introChallengeBtn').addEventListener('click', () => startRoad('challenge'));
+  $('#introChallengeBtn').addEventListener('click', () => { G.name = ($('#nameInput').value || '').trim() || G.name; store.set('name', G.name); startRoad('challenge'); });
   $('#nextBtn').addEventListener('click', nextQ);
   $('#wrBtn').addEventListener('click', () => { sfx.tap(); if (G.written >= 4) { W.setMode('menu', 'intro'); show('roadIntro'); } else { G.stats = null; finishExam('written-fail'); } });
   $('#roadStartBtn').addEventListener('click', () => startRoad('test'));
