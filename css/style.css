@@ -184,6 +184,24 @@ body.ready .loading { display: none; }
   #challengeResult { justify-content: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+/* Result sharing: downloadable PNG remains usable without a native share sheet. */
+.share-dialog { border: 0; border-radius: 22px; background: var(--paper); color: var(--ink); width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 24px); padding: 20px; overflow-y: auto; box-shadow: 0 20px 80px #0005; }
+.share-dialog::backdrop { background: #16181dd9; }
+.share-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.share-heading h2 { font-size: 23px; margin: 0; }
+.share-heading button { border: 0; background: transparent; font: inherit; font-size: 24px; width: 44px; height: 44px; cursor: pointer; }
+.share-formats { display: flex; gap: 8px; margin: 14px 0; }
+.share-formats button { flex: 1; border: 2px solid var(--ink); border-radius: 12px; background: transparent; color: var(--ink); padding: 10px; font: inherit; font-size: 14px; font-weight: 900; cursor: pointer; }
+.share-formats button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+#sharePreview { display: block; width: auto; max-width: 100%; height: auto; max-height: 46dvh; margin: 0 auto 16px; border-radius: 10px; -webkit-user-select: auto; user-select: auto; }
+#sharePreview:not([src]) { min-height: 180px; }
+.share-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.share-actions .btn { font-size: 15px; padding: 13px 9px; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; }
+.share-actions [aria-disabled="true"], .share-actions :disabled { opacity: .4; pointer-events: none; }
+#shareStatus { margin: 14px 0 0; line-height: 1.7; }
+#shareCaption { margin-top: 10px; width: 100%; min-height: 140px; font: inherit; -webkit-user-select: text; user-select: text; }
+.share-dialog button:focus-visible, .share-dialog a:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+@media(max-width:360px) { .share-actions { grid-template-columns: 1fr; } }
 
 /* 聲音掣（左上角，所有畫面都有）：0 全開、1 冇背景音樂、2 全部靜音 */
 .sound-btn { position: fixed; z-index: 30; left: max(10px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); display: flex; align-items: center; gap: 1px; height: 38px; padding: 0 9px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; cursor: pointer; box-shadow: 0 4px 12px -6px rgba(0,0,0,.5); }

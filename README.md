@@ -35,3 +35,31 @@
 純靜態網頁，three.js 由 jsDelivr 載入，唔使 build。本機試玩：喺呢個資料夾開任何靜態伺服器（例如 `npx serve`）。
 
 純屬虛構：遮政署、《擔遮條例》同所有舖名都係作出嚟。
+
+## Production website and CI/CD
+
+This repository is the source of truth for the game, including result sharing,
+live street backgrounds, and the optional `WhatIfVisitor` analytics hooks.
+Production: https://www.whatifhk.com/umbrella-licence/
+
+- Work on a branch and open a PR: GitHub Actions checks JavaScript syntax,
+  local imports, HTML controls, required music files and sharing helpers.
+- Push or merge to `main`: the same checks run, then the workflow calls the
+  `WHATIFHK_DEPLOY_HOOK` repository secret to rebuild the existing What If HK
+  Vercel project. Never put the hook URL in source or logs.
+- The website build fetches this public repository's current `main`, builds it,
+  and publishes `dist/` at `/umbrella-licence/`. No manual copy or sync commit
+  is needed. Checks run again inside Vercel; a failed build does not publish.
+- The workflow waits for `/umbrella-licence/release.json` to show its commit,
+  so green means that version was observed live, not only that a request was sent.
+- GitHub Pages continues to work from the repository's static source. Tracking
+  loads only on whatifhk.com; sharing and gameplay also work on GitHub Pages.
+
+Local: Node 22+, `npm test` or `npm run build` (no dependencies to install).
+`dist/` contains only runtime assets. Asset query versions are generated from
+the content during production builds, so editing code needs no version bump.
+Website services, MongoDB and mail credentials stay in the private website
+project; this repository does not need those credentials.
+
+To roll back the game, revert the game commit on `main`; the workflow republishes
+the reverted source. For website changes use `satori-casper/whatifhk-site`.

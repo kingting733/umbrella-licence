@@ -1,2 +1,6 @@
 audio/src/road_v1.mp3
 audio/src/road_v2a.mp3
+dist/
+node_modules/
+.env*
+.DS_Store

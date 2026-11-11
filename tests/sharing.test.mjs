@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {captionFor,threadsURL,filenameFor,FORMATS,GAME_URL} from '../js/share.mjs';
+test('Threads composes current score and exact game link with safe encoding',()=>{const d={kind:'challenge',name:'阿明&?#',seconds:94.7};const u=new URL(threadsURL(d));assert.equal(u.origin,'https://www.threads.com');assert.equal(u.pathname,'/intent/post');assert.equal(u.searchParams.get('text'),captionFor(d));assert.equal(u.searchParams.get('url'),GAME_URL);assert.match(u.searchParams.get('text'),/94\.7 秒/);});
+test('licence captions distinguish fail, partial, and full approvals',()=>{for(const [grade,phrase]of [['raincoat','雨衣令'],['partial','縮骨遮牌'],['full','全類別批准']])assert.ok(captionFor({kind:'licence',name:'阿明',grade}).includes(phrase));});
+test('exports have explicit Instagram dimensions and safe file names',()=>{assert.deepEqual(FORMATS.story,[1080,1920]);assert.deepEqual(FORMATS.post,[1080,1350]);assert.equal(filenameFor({kind:'challenge',name:'../../<>'},'story'),'whatifhk-challenge-________-story.png');});

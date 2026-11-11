@@ -1,3 +1,4 @@
+import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=13';
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
 import { QUESTIONS, SIGNS } from './questions.js?v=13';
 import * as W from './scene.js?v=13';
@@ -42,6 +43,7 @@ const QTIME = 15;
 const WT = { qs: [], i: 0, correct: 0, answered: true, t0: 0, iv: 0, lastSec: -1 };
 function startWritten() {
   audio(); G.name = ($('#nameInput').value || '').trim() || '陳大文'; store.set('name', G.name);
+  window.WhatIfVisitor?.setUsername(G.name); window.WhatIfVisitor?.track('game_started', { mode: 'exam' });
   WT.qs = shuffle(QUESTIONS.slice()).slice(0, 5).map(q => { const ord = shuffle([0, 1, 2, 3]); return { ...q, o: ord.map(k => q.o[k]), a: ord.indexOf(q.a) }; });
   WT.i = 0; WT.correct = 0; G.stats = null; W.setMode('menu', 'written'); show('written'); renderQ();
 }
@@ -74,6 +76,7 @@ function answer(k) {
 }
 function nextQ() { sfx.page(); WT.i++; if (WT.i < 5) renderQ(); else writtenDone(); }
 function writtenDone() {
+  window.WhatIfVisitor?.track('written_completed', { written_score: WT.correct });
   G.written = WT.correct; const pass = WT.correct >= 4;
   $('#wrScore').textContent = WT.correct; const st = $('#wrStamp'); st.textContent = pass ? '合格' : '肥佬'; st.className = 'stamp ' + (pass ? 'pass' : 'fail');
   $('#wrLine').innerHTML = pass ? '筆試合格。下一關：<b>路試</b>。' : '5 題要答啱 4 題。考官建議你返去溫書，出街記得著<b>雨衣</b>。';
@@ -104,6 +107,7 @@ const R = { alive: false };
 const speedAt = t => R.mode === 'challenge' ? Math.pow(1.2, Math.floor(t / 10)) : 1;
 
 function startRoad(mode) {
+  if (mode === 'challenge') { window.WhatIfVisitor?.setUsername(G.name); window.WhatIfVisitor?.track('game_started', { mode }); window.WhatIfVisitor?.track('challenge_started'); } else if (mode === 'test') window.WhatIfVisitor?.track('road_started');
   audio(); clearEvents(); W.roadReset(); W.setMode('road'); coachHide();
   const tut = mode === 'tutorial';
   Object.assign(R, { mode, alive: true, running: tut, ended: false, pre: tut ? 0 : 3.2, coach: null, tut: tut ? { done: new Set(), lesson: 0, idle: null, miss: 0, exitFor: null } : null, t: 0, state: 'normal', stateUntil: 0, lastAct: -9, lastActType: '', coverUntil: -1, wet: 0,
@@ -383,6 +387,7 @@ function drawTags() {
 function finishExam(outcome) {
   const st = G.stats; let grade;
   if (outcome !== 'pass') grade = 'raincoat'; else if (G.written === 5 && st.strikes === 0) grade = 'full'; else grade = 'partial';
+  window.WhatIfVisitor?.track('exam_completed', { outcome, grade, written_score: G.written, strikes: st?.strikes || 0 });
   G.grade = grade; if (grade !== 'raincoat') store.set('unlocked', true);
   G.licNo = licNo();
   const rows = [['筆試', `${G.written} / 5`], ['路試', outcome === 'written-fail' ? '未獲安排（筆試不合格）' : st.completed ? '完成 60 秒' : '不合格']];
@@ -439,6 +444,7 @@ function makeCard(kind) {
 function applyTaxi() { sfx.tap(); $('#taxiBtn').hidden = true; const s = $('#taxiStatus'); s.hidden = false; s.textContent = '審批中…'; setTimeout(() => { s.textContent = '批出。你而家可以收錢幫人擔遮。'; const im = $('#taxiImg'); im.src = makeCard('taxi'); im.hidden = false; sfx.stamp(); setTimeout(sfx.cash, 250); }, 1500); }
 
 function challengeDone(title, reason) {
+  window.WhatIfVisitor?.track('challenge_completed', { duration_seconds: R.t, perfect: R.perfect });
   const t = R.t, best = store.get('best', 0), isNew = t > best; if (isNew) store.set('best', t);
   $('#crTime').textContent = t.toFixed(1); $('#crBest').innerHTML = isNew ? '<span class="pill gold">新紀錄</span>' : `最佳紀錄 ${best.toFixed(1)} 秒`;
   $('#crRows').innerHTML = [['最高速度', `×${Math.pow(1.2, Math.floor(t / 10)).toFixed(2)}`], ['錯開', `${R.ok} 個（完美 ${R.perfect}）`], ['最高連擊', `${R.maxCombo}`], ['點死', title ? `${title}` : '—']].map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
@@ -447,13 +453,14 @@ function challengeDone(title, reason) {
 }
 
 // ---------- 挑戰模式排行榜 ----------
-let boardSeq = 0;
+let boardSeq = 0, shareRank = null;
 async function loadBoard(t) {
-  const seq = ++boardSeq, list = $('#boardList'), status = $('#boardStatus');
+  shareRank = null; const seq = ++boardSeq, list = $('#boardList'), status = $('#boardStatus');
   list.innerHTML = ''; $('#boardMe').textContent = ''; status.hidden = false; status.textContent = '上載成績、載入排行榜…';
   try {
     try { await submitScore(G.name, t); } catch (e) { /* 上載失敗都照樣顯示排行榜 */ }
     const b = await getBoard(); if (seq !== boardSeq) return;
+    if (b.me) { shareRank = { rank: Number(b.me.rank), total: Number(b.total) }; updateChallengeRank(shareRank.rank, shareRank.total); }
     const row = (r, cls) => { const li = document.createElement('li'); if (cls) li.className = cls; for (const [c, v] of [['r', r.rank], ['n', r.name], ['s', Number(r.seconds).toFixed(1) + ' 秒']]) { const s = document.createElement('span'); s.className = c; s.textContent = v; li.appendChild(s); } return li; };
     (b.top || []).forEach(r => list.appendChild(row(r, r.me ? 'me' : '')));
     if (b.me && !(b.top || []).some(r => r.me)) { const g = document.createElement('li'); g.className = 'gap'; g.textContent = '⋯'; list.appendChild(g); list.appendChild(row(b.me, 'me')); }
@@ -473,6 +480,9 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 function boot() {
+  setupSharing();
+  $('#shareLicence').addEventListener('click', () => openSharing({ kind: 'licence', background: W.shareBackground(), name: G.name, grade: G.grade, card: $('#cardImg').src, written: G.written, road: G.stats?.completed ? '路試完成 60 秒' : G.stats ? '路試不合格' : '路試未獲安排' }));
+  $('#shareChallenge').addEventListener('click', () => openSharing({ kind: 'challenge', background: W.shareBackground(), name: G.name, seconds: R.t, perfect: R.perfect, combo: R.maxCombo, speed: speedAt(R.t), best: store.get('best', R.t), ...shareRank }));
   W.initWorld($('#world'));
   try { G.portraits = W.makePortraits(); for (const k of ['full', 'raincoat', 'taxi']) { PHOTO[k] = new Image(); PHOTO[k].src = G.portraits.you[k]; } exam('neutral'); } catch (e) { G.portraits = null; }
   $('#nameInput').value = store.get('name', ''); G.name = store.get('name', '') || G.name;

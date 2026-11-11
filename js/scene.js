@@ -251,3 +251,16 @@ export function makePortraits() {
   }
   R.dispose(); return out;
 }
+
+// Reuse the live game scene for sharing; restore the gameplay canvas immediately.
+export function shareBackground() {
+  if (!renderer || !scene || !camera) return null;
+  const size = renderer.getSize(new THREE.Vector2()), ratio = renderer.getPixelRatio();
+  try {
+    frame(0, 0);
+    const portrait = camera.clone(); portrait.aspect = 9 / 16; portrait.position.set(.15, 1.3, 1.4); portrait.lookAt(0, 1, -3); portrait.updateProjectionMatrix();
+    renderer.setPixelRatio(1); renderer.setSize(1080, 1920, false); renderer.render(scene, portrait);
+    return renderer.domElement.toDataURL('image/png');
+  } catch { return null; }
+  finally { renderer.setPixelRatio(ratio); renderer.setSize(size.x, size.y, false); renderer.render(scene, camera); }
+}
