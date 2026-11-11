@@ -260,3 +260,10 @@ body.ready .loading { display: none; }
 @keyframes browser-arrive{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(hover:hover) and (pointer:fine){.browser-continue:hover,.share-browser-help:hover{color:var(--ink)}.browser-close:hover{background:#16181d0b}}
 @media(prefers-reduced-motion:reduce){.browser-dialog{animation:none}#browserOpen{transition:none}}
+
+/* 而家幾多人同時考緊牌 */
+.online { display: inline-flex; align-items: center; gap: 8px; align-self: center; margin: 0; background: rgba(255,255,255,.92); color: var(--ink); font-weight: 900; font-size: 15px; padding: 6px 14px; border-radius: 999px; box-shadow: 0 4px 14px -6px rgba(0,0,0,.35); }
+.online[hidden] { display: none; }
+.online b { color: var(--red); font-size: 17px; }
+.online i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(58,163,107,.6); animation: livedot 1.6s ease-out infinite; flex: none; }
+@keyframes livedot { 70% { box-shadow: 0 0 0 8px rgba(58,163,107,0); } 100% { box-shadow: 0 0 0 0 rgba(58,163,107,0); } }

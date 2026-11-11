@@ -28,7 +28,7 @@
 | `js/scene.js` | 3D 街景、迎面行人、第一人稱把遮、頭頂招牌、牌照相 |
 | `js/game.js` | 流程、判定、計分、挑戰模式、牌照卡 |
 | `js/questions.js` | 筆試題庫同路牌圖 |
-| `js/board.js` | 挑戰模式排行榜：Supabase 專案 `umbrella-licence` 嘅 `submit_score` / `get_leaderboard` 兩個 RPC（`scores` 表前端讀唔到） |
+| `js/board.js` | 挑戰模式排行榜：Supabase 專案 `umbrella-licence` 嘅 `submit_score` / `get_leaderboard` 兩個 RPC（`scores` 表前端讀唔到）；「而家幾多人同時考緊牌」：每部裝置每 25 秒 call `ping_online`（50 秒內報過到就算在線，切走分頁 / 離開即 `leave_online`），`online` 表前端一樣讀唔到 |
 | `js/audio.js` | 聲音：背景音樂播 `audio/*.mp3`（未載入 / 失敗就用合成音樂頂住；挑戰模式每加速一級播快 5%）、音效、雨聲（Web Audio 即時合成）。左上角聲音掣：全開 → 冇背景音樂 → 靜音 |
 | `audio/` | 背景音樂：`menu` / `quiz` / `road.mp3`，用 ElevenLabs Music 生成（原檔喺 `audio/src/`），`make_loops.py` 自動搵循環點剪成無縫循環、統一 −16 LUFS，循環點記喺 `loops.json`（改咗要同步 `audio.js` 嘅 `FILES`） |
 

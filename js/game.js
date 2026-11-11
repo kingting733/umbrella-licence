@@ -1,9 +1,9 @@
-import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=14';
+import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=15';
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=14';
-import * as W from './scene.js?v=14';
-import { submitScore, getBoard } from './board.js?v=14';
-import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=14';
+import { QUESTIONS, SIGNS } from './questions.js?v=15';
+import * as W from './scene.js?v=15';
+import { submitScore, getBoard, pingOnline, leaveOnline } from './board.js?v=15';
+import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=15';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -32,7 +32,23 @@ const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e)
 
 // ---------- 畫面切換 ----------
 const SCREENS = ['intro', 'written', 'writtenResult', 'roadIntro', 'road', 'result', 'challengeResult'];
-function show(id) { SCREENS.forEach(s => { $('#' + s).hidden = s !== id; }); $('#' + id).scrollTop = 0; curScreen = id; music(SCREEN_MUSIC[id]); if (id !== 'road') ambience('menu'); }
+function show(id) { SCREENS.forEach(s => { $('#' + s).hidden = s !== id; }); $('#' + id).scrollTop = 0; curScreen = id; music(SCREEN_MUSIC[id]); if (id !== 'road') ambience('menu'); setOnline(id === 'road' ? ({ test: 'road', tutorial: 'practice' }[R.mode] || 'challenge') : ONLINE_MODE[id]); }
+
+// ---------- 而家幾多人同時考緊牌 ----------
+const ONLINE_MODE = { intro: 'menu', written: 'written', writtenResult: 'written', roadIntro: 'road', result: 'menu', challengeResult: 'challenge' };
+let onlineMode = 'menu', pingTm = 0;
+function setOnline(m) { if (m && m !== onlineMode) { onlineMode = m; ping(); } }
+async function ping() {
+  clearTimeout(pingTm); if (document.hidden) return;
+  try { showOnline(await pingOnline(onlineMode)); } catch (e) { /* 連唔到就唔顯示 */ }
+  clearTimeout(pingTm); pingTm = setTimeout(ping, 25000);
+}
+function showOnline(r) {
+  const n = Number(r && r.total) || 0;
+  $$('.online').forEach(el => { el.hidden = !n; el.querySelector('span').innerHTML = n >= 2 ? `而家 <b>${n}</b> 人同時考緊牌` : '而家得你一個考緊，叫埋朋友嚟考'; });
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(pingTm); leaveOnline(); } else ping(); });
+window.addEventListener('pagehide', leaveOnline);
 const G = { name: '陳大文', written: 0, stats: null, grade: null, portraits: null, licNo: '' };
 
 // ---------- 考官黃 Sir ----------
@@ -489,6 +505,7 @@ function boot() {
   const unlocked = store.get('unlocked', false); $('#introChallengeBtn').hidden = !unlocked;
   window.addEventListener('pointerdown', audio, true); window.addEventListener('keydown', audio, true);   // 第一下撳就開聲（手機規定）
   $('#soundBtn').addEventListener('click', cycleSound); soundUI(false);
+  ping();
   $('#startBtn').addEventListener('click', startWritten);
   $('#introChallengeBtn').addEventListener('click', () => { G.name = ($('#nameInput').value || '').trim() || G.name; store.set('name', G.name); startRoad('challenge'); });
   $('#nextBtn').addEventListener('click', nextQ);
