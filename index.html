@@ -18,6 +18,16 @@
 <body>
 <canvas id="world" aria-hidden="true"></canvas>
 <div id="loading" class="loading"><span class="pill">砌緊條街…</span></div>
+<script>
+  // 載入失敗唔好淨係卡住「砌緊條街…」：顯示原因，方便重新整理 / 回報
+  (function () {
+    var shown = false;
+    function say(msg) { if (shown || document.body.classList.contains('ready')) return; shown = true; var p = document.querySelector('#loading .pill'); if (p) { p.style.whiteSpace = 'normal'; p.style.maxWidth = '86vw'; p.style.lineHeight = '1.4'; p.textContent = msg; } }
+    window.addEventListener('error', function (e) { say('載入失敗：' + (e.message || (e.target && (e.target.src || e.target.href)) || '未知錯誤') + '。請重新整理（Ctrl + Shift + R）。'); }, true);
+    window.addEventListener('unhandledrejection', function (e) { say('載入失敗：' + (e.reason && e.reason.message || e.reason) + '。請重新整理。'); });
+    setTimeout(function () { say('載入好慢⋯ 可能網絡塞住，請重新整理（Ctrl + Shift + R）。'); }, 15000);
+  })();
+</script>
 
 <main id="app">
   <!-- 報到 -->
