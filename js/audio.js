@@ -1,5 +1,6 @@
 // audio.js — 擔遮考牌嘅聲音：背景音樂、音效、雨聲全部用 Web Audio 即時合成（冇外部音檔、冇版權問題）
-//  - 三首背景音樂：menu「等雨停」（lo-fi）、quiz「筆試」（撥弦 + 時鐘）、road「路試」（王道進行，挑戰模式愈快愈高調）
+//  - 背景音樂：audio/{menu,quiz,road}.mp3（ElevenLabs Music 生成、make_loops.py 剪成無縫循環）；未載入 / 載入失敗就用下面嘅合成音樂頂住
+//    挑戰模式每加速一級，播放速度 +5%（最多 +25%）
 //  - iPhone：設 navigator.audioSession = 'playback'，靜音掣開咗都照出聲；舊 iOS 用一段無聲 <audio> 頂住
 const pref = (k, d) => { try { const v = localStorage.getItem('umbrella.' + k); return v == null ? d : v === '1'; } catch (e) { return d; } };
 const keep = (k, v) => { try { localStorage.setItem('umbrella.' + k, v ? '1' : '0'); } catch (e) { /* 私隱模式 */ } };
@@ -19,6 +20,7 @@ export function unlock() {
     if (!navigator.audioSession && /iP(hone|ad|od)/.test(navigator.userAgent)) silentKeeper();
     document.addEventListener('visibilitychange', () => { if (!ctx) return; (document.hidden ? ctx.suspend() : ctx.resume()).catch(() => {}); });
     setInterval(sched, 25);
+    [track, 'road', 'menu', 'quiz'].forEach(n => n && loadTrack(n));
   }
   if (ctx.state !== 'running') ctx.resume().catch(() => {});
   return ctx;
@@ -133,12 +135,35 @@ export function ambience(mode) {
 
 // ---------- 背景音樂（16 分音符步進器，提早 0.15 秒排定）----------
 let track = null, step = 0, nextT = 0, tempo = 1, semis = 0;
+// 音樂檔：[loopStart, loopEnd]（秒，嚟自 audio/loops.json；檔頭尾各有 0.3 秒重複，避開 mp3 補白）
+const FILES = { road: [.3, 18.30107], menu: [.3, 20.29238], quiz: [.3, 24.30152] }, FILE_GAIN = .62;
+const bufs = {}, loading = {}; let fileSrc = null;
+function loadTrack(name) {
+  if (!FILES[name] || bufs[name] || loading[name] || !ctx) return;
+  loading[name] = fetch(new URL(`../audio/${name}.mp3?v=11`, import.meta.url)).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+    .then(ab => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej)))
+    .then(b => { bufs[name] = b; if (track === name && !fileSrc) startFile(name, .8); })
+    .catch(() => { loading[name] = null; });   // 載入失敗：繼續用合成音樂
+}
+const fileRate = () => 1 + Math.min(5, semis) * .05;
+function startFile(name, fadeIn) {
+  const [ls, le] = FILES[name], t = ctx.currentTime + .02, s = ctx.createBufferSource(), g = ctx.createGain();
+  s.buffer = bufs[name]; s.loop = true; s.loopStart = ls; s.loopEnd = le; s.playbackRate.value = fileRate();
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(FILE_GAIN, t + fadeIn); s.connect(g); g.connect(musBus); s.start(t, ls);
+  fileSrc = { s, g };
+}
+function stopFile(fade) {
+  if (!fileSrc) return; const { s, g } = fileSrc, t = ctx.currentTime; fileSrc = null;
+  g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + fade); s.stop(t + fade + .05);
+}
 export function music(name) {
   if (name === track) return; track = name; step = 0; tempo = 1; semis = 0;
-  if (ctx) nextT = ctx.currentTime + .1;
+  if (!ctx) return;
+  nextT = ctx.currentTime + .1; stopFile(.4);
+  if (name && bufs[name]) startFile(name, .05);
 }
-export function musicSpeed(mul, tr = 0) { tempo = mul; semis = tr; }
-function sched() { if (ctx && track && prefs.music && ctx.state === 'running') schedTo(ctx.currentTime + .15); }
+export function musicSpeed(mul, tr = 0) { tempo = mul; semis = tr; if (fileSrc) fileSrc.s.playbackRate.setTargetAtTime(fileRate(), ctx.currentTime, .3); }
+function sched() { if (ctx && track && !fileSrc && prefs.music && ctx.state === 'running') schedTo(ctx.currentTime + .15); }
 function schedTo(until) {
   const T = TRACKS[track]; if (!T) return;
   if (nextT < ctx.currentTime - .05) nextT = ctx.currentTime + .03;   // 分頁返嚟 / 剛開音樂：唔好一次過補晒
@@ -210,12 +235,12 @@ const TRACKS = {
 
 // ---------- 測試用：離線渲染一段聲，計音量 ----------
 export async function _render(seconds, fn) {
-  const save = { ctx, out, sfxBus, musBus, rainBus, noiseBuf, dropBuf, rain, rainMode, track, step, nextT, tempo, semis, p: { ...prefs } };
+  const save = { ctx, out, sfxBus, musBus, rainBus, noiseBuf, dropBuf, rain, rainMode, track, step, nextT, tempo, semis, fileSrc, p: { ...prefs } };
   const oc = new OfflineAudioContext(2, Math.ceil(44100 * seconds), 44100);
-  prefs.music = prefs.sfx = true; build(oc); track = null;
-  fn({ sfx, music: n => { music(n); nextT = 0; schedTo(seconds); }, ambience, musicSpeed, at: t => t });
+  prefs.music = prefs.sfx = true; build(oc); track = null; fileSrc = null;
+  fn({ sfx, music: (n, synth) => { track = n; if (bufs[n] && !synth) startFile(n, .01); else { nextT = 0; schedTo(seconds); } }, ambience, musicSpeed, bufs, at: t => t });
   const buf = await oc.startRendering();
-  ({ ctx, out, sfxBus, musBus, rainBus, noiseBuf, dropBuf, rain, rainMode, track, step, nextT, tempo, semis } = save); Object.assign(prefs, save.p);
+  ({ ctx, out, sfxBus, musBus, rainBus, noiseBuf, dropBuf, rain, rainMode, track, step, nextT, tempo, semis, fileSrc } = save); Object.assign(prefs, save.p);
   const d = buf.getChannelData(0); let pk = 0, ss = 0; for (const x of d) { pk = Math.max(pk, Math.abs(x)); ss += x * x; }
   return { peak: +pk.toFixed(3), rms: +Math.sqrt(ss / d.length).toFixed(4), buf };
 }

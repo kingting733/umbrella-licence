@@ -29,7 +29,8 @@
 | `js/game.js` | 流程、判定、計分、挑戰模式、牌照卡 |
 | `js/questions.js` | 筆試題庫同路牌圖 |
 | `js/board.js` | 挑戰模式排行榜：Supabase 專案 `umbrella-licence` 嘅 `submit_score` / `get_leaderboard` 兩個 RPC（`scores` 表前端讀唔到） |
-| `js/audio.js` | 聲音：三首背景音樂（主頁 lo-fi、筆試撥弦 + 時鐘、路試王道進行；挑戰模式愈快愈高調）、音效、雨聲，全部用 Web Audio 即時合成，冇外部音檔。左上角聲音掣：全開 → 冇背景音樂 → 靜音 |
+| `js/audio.js` | 聲音：背景音樂播 `audio/*.mp3`（未載入 / 失敗就用合成音樂頂住；挑戰模式每加速一級播快 5%）、音效、雨聲（Web Audio 即時合成）。左上角聲音掣：全開 → 冇背景音樂 → 靜音 |
+| `audio/` | 背景音樂：`menu` / `quiz` / `road.mp3`，用 ElevenLabs Music 生成（原檔喺 `audio/src/`），`make_loops.py` 自動搵循環點剪成無縫循環、統一 −16 LUFS，循環點記喺 `loops.json`（改咗要同步 `audio.js` 嘅 `FILES`） |
 
 純靜態網頁，three.js 由 jsDelivr 載入，唔使 build。本機試玩：喺呢個資料夾開任何靜態伺服器（例如 `npx serve`）。
 

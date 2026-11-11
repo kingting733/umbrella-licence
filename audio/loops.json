@@ -1,0 +1,23 @@
+{
+ "road": {
+  "src": "road_v2b",
+  "start": 0.3,
+  "end": 18.30107,
+  "bpm": 79.5,
+  "bars": 6
+ },
+ "menu": {
+  "src": "menu_v1",
+  "start": 0.3,
+  "end": 20.29238,
+  "bpm": 120.2,
+  "bars": 10
+ },
+ "quiz": {
+  "src": "quiz_v1",
+  "start": 0.3,
+  "end": 24.30152,
+  "bpm": 120.2,
+  "bars": 12
+ }
+}
