@@ -164,9 +164,29 @@
 <dialog id="shareDialog" class="share-dialog" aria-labelledby="shareTitle">
   <div class="share-heading"><h2 id="shareTitle">曬吓你張成績表</h2><button type="button" id="shareClose" aria-label="關閉分享">✕</button></div>
   <div class="share-formats" aria-label="分享圖片格式"><button type="button" data-format="story" aria-pressed="true">Story · 9:16</button><button type="button" data-format="post" aria-pressed="false">貼文 · 4:5</button></div>
-  <img id="sharePreview" alt="你嘅分享圖片；可以長按儲存">
+  <button id="shareEnlarge" class="share-enlarge" type="button" disabled aria-label="放大成績圖，長按儲存或截圖"><img id="sharePreview" alt="你嘅分享圖片"><span>放大圖片 · 長按儲存／截圖 ↗</span></button>
   <div class="share-actions"><a class="btn gold" id="shareSave" aria-disabled="true">儲存圖片</a><button class="btn" id="shareNative" type="button" disabled>Instagram／分享圖片</button><a class="btn ghost" id="shareThreads" target="_blank" rel="noopener noreferrer">分享到 Threads ↗</a><button class="btn ghost" id="shareCopy" type="button">複製文案＋連結</button></div>
+  <div class="share-link-actions"><button id="shareLink" type="button">分享遊戲連結 ↗</button><button id="shareLinkCopy" type="button">複製遊戲連結</button></div><button id="shareBrowserHelp" class="share-browser-help" type="button">儲存／分享唔到？用瀏覽器開啟 ↗</button>
   <p id="shareStatus" class="fine" role="status" aria-live="polite"></p><textarea id="shareCaption" aria-label="分享文案" readonly hidden></textarea>
+</dialog>
+<dialog id="imageDialog" class="image-dialog" aria-label="成績圖：長按儲存或截圖">
+  <div class="image-toolbar"><p>長按儲存圖片，或者截圖</p><button id="imageClose" type="button" aria-label="關閉大圖">✕</button></div>
+  <img id="imageFull" alt="你嘅完整成績圖；長按儲存，或截圖分享">
+</dialog>
+<dialog id="browserDialog" class="browser-dialog" aria-labelledby="browserTitle" aria-describedby="browserContext">
+  <div class="browser-top"><span class="pill">遮政署 · 開考須知</span><button id="browserClose" class="browser-close" type="button" aria-label="關閉瀏覽器提示">✕</button></div>
+  <div class="browser-art" aria-hidden="true"><svg viewBox="0 0 160 100"><path d="M28 45a52 52 0 0 1 104 0Z" fill="#ffc94a" stroke="#16181d" stroke-width="3"/><path d="M54 45c0-65 52-65 52 0M80 3v76c0 18 22 18 22 0" fill="none" stroke="#16181d" stroke-width="3" stroke-linecap="round"/><path d="m23 13-4 8m121 38-4 8M15 62l-4 8m133-46-4 8" stroke="#9aa5ae" stroke-width="3" stroke-linecap="round"/></svg><span>建議<br>外置開考</span></div>
+  <h2 id="browserTitle">開個<span id="browserName">瀏覽器</span>，<br><em>再認真考牌。</em></h2>
+  <p id="browserContext" class="browser-context"></p>
+  <div class="browser-perks"><span>↗ 分享成績</span><span>↓ 儲存靚圖</span><span>↻ 下次再玩</span></div>
+  <button id="browserOpen" class="btn gold" type="button" autofocus aria-controls="browserSteps" aria-expanded="false">用瀏覽器開啟 · 睇方法 ↗</button>
+  <div id="browserSteps" class="browser-steps" hidden>
+    <ol><li>撳 Instagram 右上角 <strong>⋯</strong> 或分享選單。</li><li>揀 <strong>「用外置瀏覽器開啟」</strong>／「在瀏覽器中開啟」。</li><li>冇呢個選項？複製連結，去 Safari／Chrome 貼上。</li></ol>
+    <div class="browser-link"><input id="browserLink" aria-label="遊戲連結" value="https://www.whatifhk.com/umbrella-licence/" readonly><button id="browserCopy" type="button">複製</button></div>
+  </div>
+  <p id="browserStatus" class="fine" role="status" aria-live="polite"></p>
+  <button id="browserContinue" class="browser-continue" type="button">留喺 Instagram 試玩</button>
+  <p class="browser-footnote">兩個瀏覽器嘅暱稱同紀錄可能分開儲存。</p>
 </dialog>
 <button class="sound-btn" id="soundBtn" type="button" data-state="0" aria-label="聲音">
   <svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h4l5-4v14l-5-4H4z"/><path class="w1" d="M16 9.5a3.5 3.5 0 0 1 0 5"/><path class="w2" d="M18.5 7a7 7 0 0 1 0 10"/><path class="x" d="M16.5 9.5l5 5M21.5 9.5l-5 5"/></svg>
@@ -174,6 +194,7 @@
 </button>
 <div class="sound-tip" id="soundTip" hidden></div>
 
+<script type="module" src="js/browser.mjs?v=13"></script>
 <script type="module" src="js/game.js?v=13"></script>
 <script>
 // The shared visitor service lives on the production website. GitHub Pages stays standalone.

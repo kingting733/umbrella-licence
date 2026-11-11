@@ -1,3 +1,4 @@
+import { showBrowserHelp } from './browser.mjs?v=13';
 // Local canvas exports: no result image or nickname is uploaded to generate a card.
 export const GAME_URL = 'https://www.whatifhk.com/umbrella-licence/';
 export const FORMATS = { story: [1080, 1920], post: [1080, 1350] };
@@ -54,22 +55,30 @@ export async function renderCard(d,format='story') {
   const blob=await new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('Image export failed')),'image/png'));
   return {blob,width:w,height:h};
 }
-let dialog,preview,status,save,native,threads,copy,formatButtons,current,format='story',asset,assetURL,seq=0,opener;
+let imageDialog,imageFull,enlarge,dialog,preview,status,save,native,threads,copy,formatButtons,current,format='story',asset,assetURL,seq=0,opener;
 export function setupSharing() {
   dialog=document.getElementById('shareDialog');preview=document.getElementById('sharePreview');status=document.getElementById('shareStatus');save=document.getElementById('shareSave');native=document.getElementById('shareNative');threads=document.getElementById('shareThreads');copy=document.getElementById('shareCopy');formatButtons=[...dialog.querySelectorAll('[data-format]')];
+  imageDialog=document.getElementById('imageDialog');imageFull=document.getElementById('imageFull');enlarge=document.getElementById('shareEnlarge');
+  enlarge.onclick=()=>{if(!asset)return;imageFull.src=preview.src;imageDialog.showModal();};
+  document.getElementById('imageClose').onclick=()=>imageDialog.close();
+  imageDialog.addEventListener('close',()=>{imageFull.removeAttribute('src');enlarge.focus();});
+  document.getElementById('shareBrowserHelp').onclick=()=>showBrowserHelp({source:'share'});
+  const copyLink=async()=>{try{await navigator.clipboard.writeText(GAME_URL);status.textContent='已複製遊戲連結；朋友可以由頭開始考牌。';}catch{const field=document.getElementById('shareCaption');field.hidden=false;field.value=GAME_URL;field.focus();field.select();status.textContent='請長按／選取連結複製。';}};
+  document.getElementById('shareLinkCopy').onclick=copyLink;
+  document.getElementById('shareLink').onclick=async()=>{if(!navigator.share){await copyLink();return;}try{await navigator.share({title:'如果香港擔遮要考牌？',text:'到你考喇。',url:GAME_URL});status.textContent='已交畀分享選單。遊戲連結唔包含你嘅成績圖。';}catch(e){status.textContent=e.name==='AbortError'?'已取消分享連結。':'分享連結暫時用唔到；請撳「複製遊戲連結」。';}};
   document.getElementById('shareClose').onclick=()=>dialog.close();
   dialog.addEventListener('close',()=>{seq++;asset=null;if(assetURL)URL.revokeObjectURL(assetURL);assetURL=null;preview.removeAttribute('src');opener?.focus();});
   formatButtons.forEach(b=>b.onclick=()=>{format=b.dataset.format;refresh();});
-  save.onclick=()=>{if(!asset)return;window.WhatIfVisitor?.track('share_image_saved',{mode:current.kind,format});status.textContent='圖片已開啟儲存；如果未下載，可以長按預覽圖儲存。去 Instagram 加張圖，再貼上文案／遊戲連結。';};
-  native.onclick=async()=>{if(!asset)return;const file=new File([asset.blob],filenameFor(current,format),{type:'image/png'});if(!navigator.canShare?.({files:[file]})){status.textContent='呢個瀏覽器未支援分享圖片。請撳「儲存圖片」，再去 Instagram／Threads 上載。';return;}
+  save.onclick=()=>{if(!asset)return;window.WhatIfVisitor?.track('share_image_saved',{mode:current.kind,format});status.textContent='已嘗試下載圖片；如果冇反應，撳圖片放大，再長按儲存或截圖。去 Instagram 上載圖片，再貼上文案／遊戲連結。';};
+  native.onclick=async()=>{if(!asset)return;const file=new File([asset.blob],filenameFor(current,format),{type:'image/png'});if(!navigator.canShare?.({files:[file]})){status.textContent='呢個瀏覽器未支援分享圖片。請放大圖片，長按儲存或截圖，再去 Instagram／Threads 上載。';return;}
     try{await navigator.share({files:[file]});status.textContent='已交畀分享選單；發佈前可以喺所選 App 編輯。';window.WhatIfVisitor?.track('share_sheet_completed',{mode:current.kind,format});}catch(e){status.textContent=e.name==='AbortError'?'已取消分享，你仍可以儲存圖片。':'分享選單暫時用唔到；請儲存圖片再上載。';}};
   copy.onclick=async()=>{const caption=captionFor(current)+'\n'+GAME_URL;try{await navigator.clipboard.writeText(caption);status.textContent='已複製文案同遊戲連結。';}catch{const field=document.getElementById('shareCaption');field.hidden=false;field.value=caption;field.focus();field.select();status.textContent='請長按／選取文字複製。';}};
   threads.onclick=()=>{window.WhatIfVisitor?.track('share_threads_opened',{mode:current.kind});status.textContent='Threads 會填好文字同連結；想加成績圖，請先儲存，再喺 Threads 附加圖片。';};
 }
 async function refresh() {
-  const version=++seq;asset=null;save.removeAttribute('href');save.setAttribute('aria-disabled','true');native.disabled=true;status.textContent='整緊分享圖…';formatButtons.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.format===format)));
+  const version=++seq;asset=null;save.removeAttribute('href');save.setAttribute('aria-disabled','true');native.disabled=true;enlarge.disabled=true;status.textContent='整緊分享圖…';formatButtons.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.format===format)));
   threads.href=threadsURL(current);document.getElementById('shareCaption').hidden=true;
-  try{const result=await renderCard({...current},format);if(version!==seq||!dialog.open)return;if(assetURL)URL.revokeObjectURL(assetURL);asset=result;assetURL=URL.createObjectURL(result.blob);preview.src=assetURL;save.href=assetURL;save.download=filenameFor(current,format);save.removeAttribute('aria-disabled');native.disabled=false;status.textContent='Instagram：儲存圖片後上載，或用分享選單揀 Instagram（如有）。Threads：文字／連結已準備好，圖片要另外附加。';}
+  try{const result=await renderCard({...current},format);const dataURL=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(result.blob);});if(version!==seq||!dialog.open)return;if(assetURL)URL.revokeObjectURL(assetURL);asset=result;assetURL=URL.createObjectURL(result.blob);preview.src=dataURL;enlarge.disabled=false;save.href=assetURL;save.download=filenameFor(current,format);save.removeAttribute('aria-disabled');native.disabled=false;status.textContent='撳圖片放大，可以長按儲存或截圖。Instagram／Threads 要另外附加成績圖；分享遊戲連結只會帶朋友去遊戲首頁。';}
   catch{if(version!==seq)return;status.textContent='整圖暫時失敗，請重新揀格式再試。你仍可以複製文案或分享到 Threads。';}
 }
 export function openSharing(d) { current={...d};opener=document.activeElement;if(!dialog.open)dialog.showModal();refresh();window.WhatIfVisitor?.track('share_opened',{mode:d.kind}); }

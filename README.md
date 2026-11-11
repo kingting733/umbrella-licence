@@ -67,3 +67,17 @@ project; this repository does not need those credentials.
 
 To roll back the game, revert the game commit on `main`; the workflow republishes
 the reverted source. For website changes use `satori-casper/whatifhk-site`.
+
+## Instagram browser help
+
+Instagram visitors see a once-per-tab paper-card nudge to open an external
+browser, with a quieter option to continue playing. Android uses a user-initiated
+Chrome intent with an instructions fallback. iOS shows the Instagram menu steps
+and a copyable game link; a website cannot force Instagram to open Safari.
+`?browserHelp=ios` or `?browserHelp=android` opens the same help on demand.
+
+Sharing includes a full-screen image for long-press saving or screenshots, plus
+separate game-link sharing and copying. Download clicks are attempts, not proof
+of a saved photo. Switching browsers does not transfer the current result or
+visitor cookie; the share-time help asks players to save their result first.
+Real Instagram iPhone/Android behavior still needs physical-device validation.
