@@ -42,6 +42,10 @@ This repository is the source of truth for the game, including result sharing,
 live street backgrounds, and the optional `WhatIfVisitor` analytics hooks.
 Production: https://www.whatifhk.com/umbrella-licence/
 
+之後只需要喺呢個 repo 改遊戲，再 push／merge 到 `main`；毋須再抄檔案去網站 repo。
+去 **Actions → Check game and deploy website** 睇發佈進度。
+GitHub Pages 係另一個獨立發佈，唔代表 whatifhk.com 已更新；請睇上述 workflow。
+
 - Work on a branch and open a PR: GitHub Actions checks JavaScript syntax,
   local imports, HTML controls, required music files and sharing helpers.
 - Push or merge to `main`: the same checks run, then the workflow calls the
