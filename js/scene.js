@@ -85,7 +85,7 @@ const HOLD_ARM = [-.75, .12, -1.15];
 function buildNPC(type) {
   const T = TYPES[type], P = makePerson(T.o); scene.add(P.root); P.root.visible = false; P.scale0 = T.cm / 194; P.root.scale.setScalar(P.scale0);
   const extra = group(P.root);
-  if (type === 'popo') { const tr = makeTrolley(); tr.scale.setScalar(.72); extra.add(tr); tr.position.set(-.55, 0, .45); const bag = mesh(tr, new RoundedBoxGeometry(.6, .5, .9, 2, .06), matte(0xffffff, .6, { map: stripeTex(['#c8102e', '#f4f4f0', '#1f4fa8', '#f4f4f0'], 8) }), 0, 1.0, 0); bag.castShadow = true; }
+  if (type === 'popo') { const tr = makeTrolley(); tr.scale.setScalar(.72); extra.add(tr); tr.position.set(.55, 0, .45); const bag = mesh(tr, new RoundedBoxGeometry(.6, .5, .9, 2, .06), matte(0xffffff, .6, { map: stripeTex(['#c8102e', '#f4f4f0', '#1f4fa8', '#f4f4f0'], 8) }), 0, 1.0, 0); bag.castShadow = true; }
   if (type === 'kid') mesh(P.torso, new RoundedBoxGeometry(.38, .42, .2, 3, .06), vinyl(0xf2c230, .5), 0, .35, -.24);
   if (type === 'flyer') mesh(P.arms[0].hand, new THREE.BoxGeometry(.2, .28, .01), matte(0xffffff, .7), 0, -.02, .1, { cast: false });
   if (type === 'phone') makePhone(P.arms[0].hand, true);
@@ -95,12 +95,13 @@ function buildNPC(type) {
   if (type === 'baller') mesh(P.head, new THREE.TorusGeometry(.28, .025, 8, 32), vinyl(0xffffff, .5), 0, .1, 0, { r: [Math.PI / 2 - .25, 0, 0] });
   const U = makeUmbrella(scene, T.U); U.visible = false;
   if (T.clear) U.userData.C.traverse(o => { if (o.isMesh && o.material && o.material.color) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = .45; } });
-  return { P, U, type, cm: T.cm, busy: false };
+  return { P, U, extra, type, cm: T.cm, busy: false };
 }
 const tmpV = V3(0, 0, 0);
 function placeNPC(n, x, z, walk) {
   const P = n.P; P.root.visible = true; n.U.visible = true;
   posePerson(P, { x, y: .16, z, yaw: 0, walk, arms: [[-.25, .1, -.25], HOLD_ARM] }); P.root.scale.setScalar(n.P.scale0);
+  n.extra.scale.x = x < 0 ? -1 : 1;   // 喼 / 購物車擺喺外邊，唔好擋住中間條路
   if (n.type === 'phone') P.arms[0].sh.rotation.x = -1.1, P.arms[0].el.rotation.x = -.9, P.head.rotation.x = .35;
   if (n.type === 'flyer') P.arms[0].sh.rotation.x = -1.3;
   P.arms[1].sh.rotation.x = HOLD_ARM[0]; P.root.updateMatrixWorld(true); P.arms[1].hand.getWorldPosition(tmpV);
@@ -138,11 +139,12 @@ export function setCovered(c) { W.covered = c; }
 // ---------- 你把遮（掛喺鏡頭度）----------
 // p = 手柄（鏡頭座標），遮面中心 = 手柄 + 轉咗嘅 (0, .88, 0)；前邊遮骨要留喺畫面頂，玩家先睇到把遮點郁
 const UPOSE = {
-  normal: { p: [.2, -.76, -.15], r: [0, 0, .2], open: 1 },
-  up: { p: [.2, -.5, -.32], r: [.12, 0, .2], open: 1 },
-  downL: { p: [.3, -.69, -.25], r: [0, 0, .5], open: 1 },
-  downR: { p: [-.26, -.69, -.25], r: [0, 0, -.5], open: 1 },
-  closed: { p: [.3, -.78, -.5], r: [-.25, 0, .12], open: 0 },
+// 遮柄喺鏡頭後面少少（睇唔到支柄），平時淨係畫面頂見到一條遮邊（約 10%）
+  normal: { p: [.243, -.495, .042], r: [-.11, 0, .28], open: 1 },
+  up: { p: [.243, -.415, .012], r: [-.11, 0, .28], open: 1 },
+  downL: { p: [.323, -.537, -.028], r: [-.11, 0, .45], open: 1 },   // 遮邊斜落左邊
+  downR: { p: [-.323, -.537, -.028], r: [-.11, 0, -.45], open: 1 },
+  closed: { p: [.36, -.82, -.5], r: [-.25, 0, .1], open: 0 },
 };
 export function setUmbrella(state) { W.umb.state = state; }
 export const UMB_POSES = UPOSE;   // 測試時調位用
@@ -188,7 +190,7 @@ export function frame(dt, speed = 1.5) {
   const span = SEG * NSEG; W.segs.forEach(G => { let z = G.userData.base + (W.dist % span); if (z > SEG + 2) z -= span; G.position.z = z; });
   W.cars.forEach(c => { c.z += c.v * dt + (W.mode === 'road' ? speed * dt : 0); if (c.z > 25) c.z = -70; if (c.z < -75) c.z = 20; c.root.position.set(c.x, 0, c.z); c.root.rotation.y = c.v > 0 ? -Math.PI / 2 : Math.PI / 2; });
   if (W.mode === 'road') {
-    camera.position.set(0, EYE + Math.abs(Math.sin(t * 5.2 * Math.min(2, speed / 1.5))) * .02, 0); camera.rotation.set(-.04, 0, 0);
+    camera.position.set(0, EYE + Math.abs(Math.sin(t * 5.2 * Math.min(2, speed / 1.5))) * .02, 0); camera.rotation.set(-.1, 0, 0);
     const tgt = UPOSE[W.umb.state], K = W.umb.k, a = Math.min(1, dt * 16);
     K.p.lerp(V3(...tgt.p), a); K.r.lerp(V3(...tgt.r), a); K.open += (tgt.open - K.open) * Math.min(1, dt * 18);
     MY_U.position.copy(K.p); MY_U.rotation.set(K.r.x, K.r.y, K.r.z); MY_U.userData.open(K.open);
