@@ -1,6 +1,6 @@
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=3';
-import * as W from './scene.js?v=3';
+import { QUESTIONS, SIGNS } from './questions.js?v=4';
+import * as W from './scene.js?v=4';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -96,7 +96,11 @@ const PEOPLE = {
   baller: { name: '籃球隊長', need: 'down', f: 1 },
 };
 const CM = { popo: 155, kid: 132, flyer: 160, ol: 167, phone: 171, rider: 175, muscle: 185, tourist: 188, baller: 198 };
-const VWALK = 1.5, VREL = 3.0, HOLD = 1.0, PERFECT = .3, WET = 2.0, TEST_LEN = 60, HINT_UNTIL = 14;
+// 節奏：行慢啲（VWALK / VREL）、人少啲（GAP：每個人之間隔 2.6–3.4 秒）、撳完把遮維持耐啲（HOLD）
+const VWALK = 1.2, VREL = 2.2, HOLD = 1.6, PERFECT = .4, WET = 2.0, TEST_LEN = 60, HINT_UNTIL = 20, GAP = [2.6, 3.4], WARN_SIGN = 1.6;
+// 高過你嘅人：佢喺邊邊行過，就將遮壓低去另一邊（左邊嚟 → 壓低 →），讓佢把遮喺你上面過
+const awaySide = side => side < 0 ? 'downR' : 'downL';
+const awayArrow = side => side < 0 ? '壓低 →' : '← 壓低';
 const R = { alive: false };
 const speedAt = t => R.mode === 'challenge' ? Math.pow(1.2, Math.floor(t / 10)) : 1;
 
@@ -116,12 +120,12 @@ function genEvents() {
   while (R.lastContact - R.t < 4.5) {
     if (R.mode === 'test' && R.lastContact > TEST_LEN - 2.2) return;
     const m = speedAt(R.lastContact);
-    let gap = rand(1.45, 1.85) / m; if (R.lastKind === 'sign') gap = Math.max(gap, .9 / m + .7);
+    let gap = rand(GAP[0], GAP[1]) / m; if (R.lastKind === 'sign') gap = Math.max(gap, 1.2 / m + 1.0);
     const contact = R.lastContact + gap; let e;
     if (contact >= R.nextSignAt) {
       const style = Math.random() < .5 ? 'arcade' : 'board', v = VWALK * m;
       e = { kind: 'sign', contact, style, v, spawned: false, resolved: false, warned: false };
-      R.nextSignAt = contact + rand(5.5, 8.5); R.lastKind = 'sign';
+      R.nextSignAt = contact + rand(9, 13); R.lastKind = 'sign';
     } else {
       let type; do { type = pick(['popo', 'popo', 'kid', 'flyer', 'ol', 'phone', 'rider', 'muscle', 'tourist', 'baller']); } while (type === R.lastType);
       R.lastType = type; R.lastKind = 'person';
@@ -150,18 +154,18 @@ function step(dt) {
     const z = -(e.contact - R.t) * e.v;
     if (e.kind === 'person') {
       if (!e.spawned && z > -26) { e.spawned = true; e.n = W.npcSpawn(e.type); }
-      if (e.spawned) W.npcPlace(e.n, e.side, z, e.walk0 + R.t * 7.5 * m * PEOPLE[e.type].f);
+      if (e.spawned) W.npcPlace(e.n, e.side, z, e.walk0 + R.t * 5.5 * m * PEOPLE[e.type].f);
     } else {
       if (!e.spawned && z > -45) { e.spawned = true; e.h = W.hazardSpawn(e.style); }
       if (e.spawned) W.hazardPlace(e.h, z);
-      if (!e.warned && e.contact - R.t <= 1.0) { e.warned = true; showWarn(true); sfx.warn(); }
+      if (!e.warned && e.contact - R.t <= WARN_SIGN) { e.warned = true; showWarn(true); sfx.warn(); }
     }
     if (R.t >= e.contact) { resolve(e); if (R.ended) return; }
   }
   // 行過咗嘅人 / 招牌：繼續郁一陣先收
   for (const e of R.events) if (e.resolved && e.spawned) {
     const z = -(e.contact - R.t) * e.v;
-    if (e.kind === 'person') { if (z > 2.5) { W.npcRelease(e.n); e.spawned = false; } else W.npcPlace(e.n, e.side, z, e.walk0 + R.t * 7.5 * m); }
+    if (e.kind === 'person') { if (z > 2.5) { W.npcRelease(e.n); e.spawned = false; } else W.npcPlace(e.n, e.side, z, e.walk0 + R.t * 5.5 * m); }
     else { if (z > 9) { W.hazardRelease(e.h); e.spawned = false; } else W.hazardPlace(e.h, z); }
   }
   R.events = R.events.filter(e => !e.resolved || e.spawned);
@@ -177,7 +181,7 @@ function resolve(e) {
     else { sfx.siren(); fault('刮爛招牌！', `遮頂撞落「${e.h ? e.h.name : '招牌'}」。見到招牌要即刻收遮。`, 'sign'); }
     return;
   }
-  const p = PEOPLE[e.type], mySide = e.side < 0 ? 'downL' : 'downR', isDown = s === 'downL' || s === 'downR';
+  const p = PEOPLE[e.type], mySide = awaySide(e.side), isDown = s === 'downL' || s === 'downR';
   let ok = false;
   if (s === 'closed') ok = true;
   else if (p.need === 'up') ok = s === 'up';
@@ -185,14 +189,16 @@ function resolve(e) {
   else ok = s === 'up' || s === mySide;
   if (ok) { success(s !== 'closed' && R.t - R.lastAct <= PERFECT, false); return; }
   if (e.type === 'popo') { R.popoHit = true; endRoad('instant', '即時取消資格', '遮骨直插阿婆眼部。'); return; }
-  const sw = e.side < 0 ? '左' : '右', arrow = e.side < 0 ? '壓低←' : '壓低→';
-  if (isDown && s !== mySide && p.need !== 'up') fault('壓錯邊！', `${p.name}喺你${sw}邊行過，要撳【${arrow}】。`, 'side');
+  const sw = e.side < 0 ? '左' : '右', other = e.side < 0 ? '右' : '左', arrow = awayArrow(e.side);
+  if (isDown && s !== mySide && p.need !== 'up') fault('壓錯邊！', `${p.name}喺你${sw}邊行過，要將遮壓低去${other}邊【${arrow}】。`, 'side');
   else if (p.need === 'up') fault('插親人！', `遮骨刮中${p.name}（${CM[e.type]}cm），要撳【舉高】。`, 'poke');
   else if (p.need === 'down') fault('撞遮！', `${p.name}（${CM[e.type]}cm）把遮同你撼個正，要撳【${arrow}】。`, 'bump');
   else fault('撞遮！', `${p.name}同你差唔多高，企定唔郁就撼埋一齊。`, 'bump');
 }
 const OKLINES = ['嗯。', '繼續。', '穩陣。', '可以。'], PERFLINES = ['教科書式錯開。', '有啲料。', '好準。', '我都想學。'];
 const FAULTLINES = { wet: '濕晒喇考生。', sign: '招牌都畀你刮花。', side: '左右都分唔清？', poke: '險過剃頭。', bump: '睇路呀！' };
+// 路試犯錯：間中（約三成）黃 Sir 改鬧「一二一二把遮啊！」
+const SCOLD = '一二一二把遮啊！', SCOLD_P = .35;
 function success(perfect, isSign) {
   R.ok++; R.combo++; R.maxCombo = Math.max(R.maxCombo, R.combo);
   if (perfect) { R.perfect++; R.perfectRun++; R.maxPerfectRun = Math.max(R.maxPerfectRun, R.perfectRun); if (isSign) R.signPerfect++; } else R.perfectRun = 0;
@@ -208,7 +214,7 @@ function fault(title, reason, key) {
   const lives = $$('#lives i'); if (lives[R.strikes - 1]) lives[R.strikes - 1].className = 'x';
   if (R.mode === 'challenge') { endRoad('dead', title.replace('！', ''), reason); return; }
   if (R.strikes >= 3) { endRoad('fail', '路試不合格', '犯錯 3 次。'); return; }
-  exam('frown', FAULTLINES[key] || '睇路呀！');
+  exam('frown', Math.random() < SCOLD_P ? SCOLD : FAULTLINES[key] || '睇路呀！');
 }
 function endRoad(kind, title, reason) {
   R.ended = true; R.running = false; showWarn(false); $('#tags').innerHTML = '';
@@ -255,8 +261,8 @@ function drawTags() {
   while (els.length < want.length) { const d = document.createElement('div'); d.className = 'tag'; box.appendChild(d); els.push(d); }
   els.forEach((el, i) => {
     const w = want[i]; if (!w) { el.style.display = 'none'; return; }
-    const p = PEOPLE[w.e.type], arrow = w.e.side < 0 ? '←' : '→';
-    const hintTxt = !hint ? '' : p.need === 'up' ? '舉高' : p.need === 'down' ? (w.e.side < 0 ? '← 壓低' : '壓低 →') : '舉高 / 壓低';
+    const p = PEOPLE[w.e.type], arrow = w.e.side < 0 ? '→' : '←';   // 箭咀 = 要壓低嘅方向（佢嘅另一邊）
+    const hintTxt = !hint ? '' : p.need === 'up' ? '舉高' : p.need === 'down' ? awayArrow(w.e.side) : '舉高 / ' + awayArrow(w.e.side);
     el.style.display = ''; el.className = 'tag ' + p.need;
     el.innerHTML = `<b>${CM[w.e.type]}cm</b> ${p.name}${p.need !== 'up' ? `<i>${arrow}</i>` : ''}${hintTxt ? `<small>${hintTxt}</small>` : ''}`;
     const bw = box.clientWidth, half = el.offsetWidth / 2 + 8;   // 唔好俾標籤出咗畫面
