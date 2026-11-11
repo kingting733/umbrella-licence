@@ -5,7 +5,7 @@ const pref = (k, d) => { try { const v = localStorage.getItem('umbrella.' + k); 
 const keep = (k, v) => { try { localStorage.setItem('umbrella.' + k, v ? '1' : '0'); } catch (e) { /* 私隱模式 */ } };
 export const prefs = { music: pref('music', true), sfx: pref('sfx', true) };
 
-const MUS_VOL = .22;
+const MUS_VOL = .34;
 let ctx = null, out, sfxBus, musBus, rainBus, noiseBuf, dropBuf, rain = null, rainMode = 'off';
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 
@@ -120,7 +120,7 @@ export const sfx = {
 
 // ---------- 雨聲 ----------
 // [沙沙底噪, 高頻絲絲, 雨打遮面] ；closed = 收咗遮淋緊雨（大聲啲、刺耳啲）；covered = 瓦遮頭底
-const RAIN = { off: [0, 0, 0], menu: [.035, .01, 0], open: [.045, .012, .1], closed: [.14, .05, 0], covered: [.02, .005, 0] };
+const RAIN = { off: [0, 0, 0], menu: [.022, .006, 0], open: [.028, .007, .055], closed: [.12, .04, 0], covered: [.014, .004, 0] };
 export function ambience(mode) {
   if (!ctx || mode === rainMode) return; rainMode = mode;
   if (!rain) {
