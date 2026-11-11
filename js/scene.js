@@ -2,7 +2,7 @@
 // 頭頂招牌 / 騎樓、選單畫面嘅「你」公仔、牌照相同考官頭像
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { V3, rng, vinyl, matte, mesh, ell, group, canvas, tex, hex, F, makePerson, posePerson, makePhone, makeCar, makeUmbrella, makeRain, tower, PAINT, surfTex, makeTrolley } from './toy.js?v=5';
+import { V3, rng, vinyl, matte, mesh, ell, group, canvas, tex, hex, F, makePerson, posePerson, makePhone, makeCar, makeUmbrella, makeRain, tower, PAINT, surfTex, makeTrolley } from './toy.js?v=6';
 
 export const INK = '#16181d', RED = '#e23b3b', GOLD = '#ffc94a', GREEN = '#3aa36b', BLUE = '#2e6fd8', ORANGE = '#f08a24';
 
@@ -117,20 +117,27 @@ export function npcScreen(n) { // 標籤位置：遮頂上面少少
 
 // ---------- 頭頂招牌 / 騎樓 ----------
 const SHOPNAMES = ['金龍冰室', '福壽押', '好運燒臘', '永發藥房', '大華電器', '新記粥麵', '和興五金', '利昌海味'];
-export function hazardSpawn(style) {
+// len = 瓦遮頭由招牌（z=0）向後伸幾多米；行過嘅時間 = len / 行速
+const AWNING = [['#c8102e', '#f4f4f0'], ['#1d7a4a', '#f4f4f0'], ['#1f4fa8', '#f4f4f0'], ['#e8742a', '#fff4c2']];
+export function hazardSpawn(style, len = 4) {
   const G = group(scene), name = SHOPNAMES[Math.floor(Math.random() * SHOPNAMES.length)], k = Math.floor(Math.random() * 7);
   const t = signTexH(name, k, 1024, 200), face = new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: .35, roughness: .5 }), side = matte(0x2a2a2a, .6);
-  if (style === 'arcade') {
-    mesh(G, new THREE.BoxGeometry(6.9, .3, 4), matte(0xcfc6b6, .9), .95, 2.35, -2, { cast: true });
+  if (style === 'arcade') {   // 騎樓：成段有樓喺頭頂
+    mesh(G, new THREE.BoxGeometry(6.9, .3, len), matte(0xcfc6b6, .9), .95, 2.35, -len / 2, { cast: true });
     mesh(G, new THREE.BoxGeometry(6.9, .55, .14), [side, side, side, side, face, side], .95, 2.0, 0);
-    for (const z of [0, -4]) mesh(G, new THREE.BoxGeometry(.38, 2.3, .38), matte(0xd9d0c0, .8), -2.2, 1.15, z);
-    mesh(G, new THREE.BoxGeometry(6.9, 5, 4), matte(0xd8c8a8, .9), .95, 5.0, -2, { cast: false });
-  } else {
+    const cols = Math.max(1, Math.round(len / 2.5));
+    for (let i = 0; i <= cols; i++) mesh(G, new THREE.BoxGeometry(.38, 2.3, .38), matte(0xd9d0c0, .8), -2.2, 1.15, -len * i / cols);
+    mesh(G, new THREE.BoxGeometry(6.9, 5, len), matte(0xd8c8a8, .9), .95, 5.0, -len / 2, { cast: false });
+  } else {   // 招牌 + 後面一大塊帆布簷篷
     mesh(G, new THREE.BoxGeometry(5.8, .55, .14), [side, side, side, side, face, face], .7, 2.05, 0);
     for (const x of [-1.6, 3.2]) mesh(G, new THREE.CylinderGeometry(.025, .025, 1.9, 8), vinyl(0x55585e, .4), x, 3.25, 0, { cast: false });
     mesh(G, new THREE.BoxGeometry(5.0, .08, .08), vinyl(0x55585e, .4), .8, 4.2, 0, { cast: false });
+    const aw = stripeTex(AWNING[Math.floor(Math.random() * AWNING.length)], 8); aw.repeat.set(1, 1);
+    const canvasMat = matte(0xffffff, .85, { map: aw, side: THREE.DoubleSide });
+    mesh(G, new THREE.BoxGeometry(6.6, .05, len), canvasMat, .95, 2.55, -len / 2, { cast: true });
+    for (const z of [-len * .33, -len * .66, -len]) mesh(G, new THREE.BoxGeometry(6.6, .04, .04), vinyl(0x55585e, .4), .95, 2.5, z, { cast: false });
   }
-  return { G, name, style, len: style === 'arcade' ? 4 : .2 };
+  return { G, name, style, len };
 }
 export function hazardPlace(h, z) { h.G.position.z = z; }
 export function hazardRelease(h) { scene.remove(h.G); h.G.traverse(o => { if (o.isMesh) { o.geometry.dispose(); } }); }

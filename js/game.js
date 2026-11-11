@@ -1,7 +1,7 @@
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=5';
-import * as W from './scene.js?v=5';
-import { submitScore, getBoard } from './board.js?v=5';
+import { QUESTIONS, SIGNS } from './questions.js?v=6';
+import * as W from './scene.js?v=6';
+import { submitScore, getBoard } from './board.js?v=6';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -109,7 +109,7 @@ function startRoad(mode) {
   audio(); clearEvents(); W.roadReset(); W.setMode('road');
   Object.assign(R, { mode, alive: true, running: false, ended: false, pre: 3.2, t: 0, state: 'normal', stateUntil: 0, lastAct: -9, lastActType: '', coverUntil: -1, wet: 0,
     strikes: 0, lives: mode === 'test' ? 3 : 1, log: [], ok: 0, perfect: 0, combo: 0, maxCombo: 0, perfectRun: 0, maxPerfectRun: 0, wetCount: 0, signs: 0, signPerfect: 0, popoHit: false,
-    events: [], lastContact: 1.4, lastKind: '', lastType: '', nextSignAt: 8 + rand(0, 2), level: 0, lastTs: 0 });
+    events: [], lastCover: 0, lastContact: 1.4, lastKind: '', lastType: '', nextSignAt: 8 + rand(0, 2), level: 0, lastTs: 0 });
   $('#hudMode').textContent = mode === 'test' ? '② 路試' : '④ 挑戰模式';
   $('#lives').innerHTML = '<i></i>'.repeat(R.lives); $('#combo').textContent = ''; $('#endOverlay').hidden = true; $('#warn').hidden = true; $('#banner').hidden = true; $('#wet').hidden = true; $('#tags').innerHTML = '';
   $('#road').classList.remove('soaked'); updateButtons(); show('road'); W.resize();
@@ -121,11 +121,14 @@ function genEvents() {
   while (R.lastContact - R.t < 4.5) {
     if (R.mode === 'test' && R.lastContact > TEST_LEN - 2.2) return;
     const m = speedAt(R.lastContact);
-    let gap = rand(GAP[0], GAP[1]) / m; if (R.lastKind === 'sign') gap = Math.max(gap, 1.2 / m + 1.0);
+    // 行出瓦遮頭之後，下一個人要隔多 1.6 秒，畀時間開返把遮
+    let gap = rand(GAP[0], GAP[1]) / m; if (R.lastKind === 'sign') gap = Math.max(gap, R.lastCover + 1.6 / m);
     const contact = R.lastContact + gap; let e;
     if (contact >= R.nextSignAt) {
-      const style = Math.random() < .5 ? 'arcade' : 'board', v = VWALK * m;
-      e = { kind: 'sign', contact, style, v, spawned: false, resolved: false, warned: false };
+      // 瓦遮頭長度：騎樓 4.4–6 米、招牌連簷篷 3.6–4.8 米（路試行速 1.2 m/s → 約 3–5 秒）
+      const style = Math.random() < .5 ? 'arcade' : 'board', v = VWALK * m, len = style === 'arcade' ? rand(4.4, 6) : rand(3.6, 4.8);
+      e = { kind: 'sign', contact, style, len, v, spawned: false, resolved: false, warned: false };
+      R.lastCover = len / v + .2;
       R.nextSignAt = contact + rand(9, 13); R.lastKind = 'sign';
     } else {
       let type; do { type = pick(['popo', 'popo', 'kid', 'flyer', 'ol', 'phone', 'rider', 'muscle', 'tourist', 'baller']); } while (type === R.lastType);
@@ -157,7 +160,7 @@ function step(dt) {
       if (!e.spawned && z > -26) { e.spawned = true; e.n = W.npcSpawn(e.type); }
       if (e.spawned) W.npcPlace(e.n, e.side, z, e.walk0 + R.t * 5.5 * m * PEOPLE[e.type].f);
     } else {
-      if (!e.spawned && z > -45) { e.spawned = true; e.h = W.hazardSpawn(e.style); }
+      if (!e.spawned && z > -45) { e.spawned = true; e.h = W.hazardSpawn(e.style, e.len); }
       if (e.spawned) W.hazardPlace(e.h, z);
       if (!e.warned && e.contact - R.t <= WARN_SIGN) { e.warned = true; showWarn(true); sfx.warn(); }
     }
@@ -167,7 +170,7 @@ function step(dt) {
   for (const e of R.events) if (e.resolved && e.spawned) {
     const z = -(e.contact - R.t) * e.v;
     if (e.kind === 'person') { if (z > 2.5) { W.npcRelease(e.n); e.spawned = false; } else W.npcPlace(e.n, e.side, z, e.walk0 + R.t * 5.5 * m); }
-    else { if (z > 9) { W.hazardRelease(e.h); e.spawned = false; } else W.hazardPlace(e.h, z); }
+    else { if (z > e.len + 3) { W.hazardRelease(e.h); e.spawned = false; } else W.hazardPlace(e.h, z); }
   }
   R.events = R.events.filter(e => !e.resolved || e.spawned);
   if (R.mode === 'test') { const left = Math.max(0, TEST_LEN - R.t); $('#hudTime').textContent = left.toFixed(1); $('#tbarFill').style.width = (R.t / TEST_LEN * 100) + '%'; if (R.t >= TEST_LEN) endRoad('win'); }
@@ -178,10 +181,12 @@ function resolve(e) {
   e.resolved = true; const s = R.state;
   if (e.kind === 'sign') {
     showWarn(false); R.signs++;
-    if (s === 'closed') { R.coverUntil = R.t + (e.style === 'arcade' ? 4 / e.v + .2 : .35); const perf = R.lastActType === 'close' && R.t - R.lastAct <= PERFECT; success(perf, true); }
+    R.coverUntil = R.t + e.len / e.v + .2;   // 喺瓦遮頭底下：唔使避人、收住遮唔會濕
+    if (s === 'closed') { const perf = R.lastActType === 'close' && R.t - R.lastAct <= PERFECT; success(perf, true); }
     else { sfx.siren(); fault('刮爛招牌！', `遮頂撞落「${e.h ? e.h.name : '招牌'}」。見到招牌要即刻收遮。`, 'sign'); }
     return;
   }
+  if (R.t < R.coverUntil) return;   // 瓦遮頭底下大家都冇開遮，唔使避
   const p = PEOPLE[e.type], mySide = awaySide(e.side), isDown = s === 'downL' || s === 'downR';
   let ok = false;
   if (s === 'closed') ok = true;
@@ -359,7 +364,7 @@ async function loadBoard(t) {
 // ================= 主迴圈、事件 =================
 let last = 0;
 function loop(ts) {
-  const dt = Math.min(.05, (ts - (last || ts)) / 1000); last = ts;
+  const dt = Math.min(.05, Math.max(0, (ts - (last || ts)) / 1000)); last = ts;
   if (R.alive) { step(dt); drawTags(); if (R.running && R.state !== 'normal' && R.state !== 'closed') { const k = Math.max(0, (R.stateUntil - R.t) / HOLD); $$('.cbtn').forEach(b => b.style.setProperty('--hold', b.dataset.act === R.state ? k : 0)); } else $$('.cbtn').forEach(b => b.style.setProperty('--hold', 0)); }
   W.frame(dt, R.alive && R.running ? VWALK * speedAt(R.t) : R.alive ? 0 : 0);
   requestAnimationFrame(loop);
