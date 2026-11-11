@@ -23,7 +23,9 @@
   (function () {
     var shown = false;
     function say(msg) { if (shown || document.body.classList.contains('ready')) return; shown = true; var p = document.querySelector('#loading .pill'); if (p) { p.style.whiteSpace = 'normal'; p.style.maxWidth = '86vw'; p.style.lineHeight = '1.4'; p.textContent = msg; } }
-    window.addEventListener('error', function (e) { say('載入失敗：' + (e.message || (e.target && (e.target.src || e.target.href)) || '未知錯誤') + '。請重新整理（Ctrl + Shift + R）。'); }, true);
+    window.addEventListener('error', function (e) {
+      if (/WebGL/i.test(e.message || '')) { say('你個瀏覽器而家開唔到 3D 畫面（WebGL）。試下：① 關咗其他分頁 ② 完全關咗瀏覽器再開 ③ 設定入面開返「硬件加速」。'); return; }
+      say('載入失敗：' + (e.message || (e.target && (e.target.src || e.target.href)) || '未知錯誤') + '。請重新整理（Ctrl + Shift + R）。'); }, true);
     window.addEventListener('unhandledrejection', function (e) { say('載入失敗：' + (e.reason && e.reason.message || e.reason) + '。請重新整理。'); });
     setTimeout(function () { say('載入好慢⋯ 可能網絡塞住，請重新整理（Ctrl + Shift + R）。'); }, 15000);
   })();
