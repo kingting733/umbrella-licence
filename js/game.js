@@ -1,3 +1,4 @@
+import { telemetry } from './telemetry.mjs?v=16';
 import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=16';
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
 import { QUESTIONS, SIGNS } from './questions.js?v=16';
@@ -32,7 +33,7 @@ const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e)
 
 // ---------- 畫面切換 ----------
 const SCREENS = ['intro', 'written', 'writtenResult', 'roadIntro', 'road', 'result', 'challengeResult'];
-function show(id) { SCREENS.forEach(s => { $('#' + s).hidden = s !== id; }); $('#' + id).scrollTop = 0; curScreen = id; music(SCREEN_MUSIC[id]); if (id !== 'road') ambience('menu'); setOnline(id === 'road' ? ({ test: 'road', tutorial: 'practice' }[R.mode] || 'challenge') : ONLINE_MODE[id]); }
+function show(id) { SCREENS.forEach(s => { $('#' + s).hidden = s !== id; }); $('#' + id).scrollTop = 0; curScreen = id; telemetry.emit('game_screen_view', { stage: id }); music(SCREEN_MUSIC[id]); if (id !== 'road') ambience('menu'); setOnline(id === 'road' ? ({ test: 'road', tutorial: 'practice' }[R.mode] || 'challenge') : ONLINE_MODE[id]); }
 
 // ---------- 而家幾多人同時考緊牌 ----------
 const ONLINE_MODE = { intro: 'menu', written: 'written', writtenResult: 'written', roadIntro: 'road', result: 'menu', challengeResult: 'challenge' };
@@ -59,6 +60,7 @@ const QTIME = 15;
 const WT = { qs: [], i: 0, correct: 0, answered: true, t0: 0, iv: 0, lastSec: -1 };
 function startWritten() {
   audio(); G.name = ($('#nameInput').value || '').trim() || '陳大文'; store.set('name', G.name);
+  telemetry.start('exam'); telemetry.stage('written');
   window.WhatIfVisitor?.setUsername(G.name); window.WhatIfVisitor?.track('game_started', { mode: 'exam' });
   WT.qs = shuffle(QUESTIONS.slice()).slice(0, 5).map(q => { const ord = shuffle([0, 1, 2, 3]); return { ...q, o: ord.map(k => q.o[k]), a: ord.indexOf(q.a) }; });
   WT.i = 0; WT.correct = 0; G.stats = null; W.setMode('menu', 'written'); show('written'); renderQ();
@@ -82,7 +84,8 @@ function tickQ() {
 }
 function answer(k) {
   if (WT.answered) return; WT.answered = true; clearInterval(WT.iv);
-  const q = WT.qs[WT.i], right = k === q.a; if (right) { WT.correct++; sfx.right(); } else sfx.wrong();
+  const q = WT.qs[WT.i], right = k === q.a;
+  telemetry.emit('question_answered', { stage: 'written', question_index: WT.i + 1, correct: right, timed_out: k < 0, duration_seconds: Math.min(QTIME, (performance.now() - WT.t0) / 1000) }); if (right) { WT.correct++; sfx.right(); } else sfx.wrong();
   $$('.opt').forEach((b, i) => { b.disabled = true; if (i === k) b.classList.add('picked'); if (i === q.a) b.classList.add('answer'); });
   $$('#dots i')[WT.i].dataset.r = right ? 'ok' : 'no';
   const fb = $('#feedback'); fb.className = 'feedback ' + (right ? 'ok' : 'no');
@@ -94,6 +97,9 @@ function nextQ() { sfx.page(); WT.i++; if (WT.i < 5) renderQ(); else writtenDone
 function writtenDone() {
   window.WhatIfVisitor?.track('written_completed', { written_score: WT.correct });
   G.written = WT.correct; const pass = WT.correct >= 4;
+  telemetry.emit('written_completed', { written_score: WT.correct, outcome: pass ? 'pass' : 'fail' });
+  telemetry.endStage(pass, { written_score: WT.correct });
+  if (!pass) telemetry.finish('exam_completed', { outcome: 'written-fail', grade: 'raincoat', written_score: WT.correct, strikes: 0 });
   $('#wrScore').textContent = WT.correct; const st = $('#wrStamp'); st.textContent = pass ? '合格' : '肥佬'; st.className = 'stamp ' + (pass ? 'pass' : 'fail');
   $('#wrLine').innerHTML = pass ? '筆試合格。下一關：<b>路試</b>。' : '5 題要答啱 4 題。考官建議你返去溫書，出街記得著<b>雨衣</b>。';
   $('#wrBtn').textContent = pass ? '前往路試' : '領取結果'; show('writtenResult'); setTimeout(sfx.stamp, 250);
@@ -155,6 +161,10 @@ const speedAt = t => R.mode === 'challenge' ? (R.hard ? HARD_BASE : 1) * Math.po
 const levelName = () => R.hard ? '觀塘收工模式' : '挑戰模式';
 
 function startRoad(mode, hard = false) {
+  if (R.mode === 'tutorial' && !R.ended) { telemetry.emit('tutorial_skipped'); telemetry.endStage(false); }
+  if (mode === 'challenge') { telemetry.start('challenge', hard ? 'hard' : 'normal'); telemetry.stage('challenge'); telemetry.emit('challenge_started'); }
+  else if (mode === 'tutorial') { telemetry.stage('tutorial'); telemetry.emit('tutorial_begin'); }
+  else { telemetry.stage('road'); telemetry.emit('road_started'); }
   if (mode === 'challenge') { window.WhatIfVisitor?.setUsername(G.name); window.WhatIfVisitor?.track('game_started', { mode, level: hard ? 'hard' : 'normal' }); window.WhatIfVisitor?.track('challenge_started', { level: hard ? 'hard' : 'normal' }); } else if (mode === 'test') window.WhatIfVisitor?.track('road_started');
   audio(); clearEvents(); W.roadReset(); W.setMode('road'); coachHide();
   const tut = mode === 'tutorial';
@@ -228,6 +238,7 @@ function tutFault(title, reason, key) {
   coachSay(`<b>${title}</b>${reason}`, 3.4);
 }
 function tutorialDone() {
+  telemetry.emit('tutorial_complete', { duration_seconds: R.t, mistakes: R.tut.miss }); telemetry.endStage(true);
   R.ended = true; R.running = false; music(null); sfx.win(); store.set('tutDone', true); $('#tags').innerHTML = ''; R.tut.idle = null;
   const m = R.tut.miss;
   coach({ text: `練習完成！${m ? `自己試錯咗 ${m} 次，可以再練多次。` : '自己試 5 個全部過晒！'}<br>正式路試一樣：<b>睇顏色 → 睇箭咀 → 行到面前先撳</b>`,
@@ -399,6 +410,11 @@ function fault(title, reason, key) {
   exam('frown', Math.random() < SCOLD_P ? SCOLD : FAULTLINES[key] || '睇路呀！');
 }
 function endRoad(kind, title, reason) {
+  if (R.ended) return;
+  const stats = { duration_seconds: R.t, perfect: R.perfect, max_combo: R.maxCombo, strikes: R.strikes, obstacles_avoided: R.ok, failure_reason: kind === 'win' ? 'none' : kind };
+  telemetry.endStage(kind === 'win', stats);
+  if (R.mode === 'challenge') telemetry.finish('challenge_completed', { ...stats, outcome: 'ended', new_record: R.t > store.get(R.hard ? 'bestHard' : 'best', 0) });
+  else telemetry.finish('exam_completed', { ...stats, written_score: G.written, outcome: kind === 'win' ? 'pass' : 'road-fail', grade: kind !== 'win' ? 'raincoat' : G.written === 5 && R.strikes === 0 ? 'full' : 'partial' });
   R.ended = true; R.running = false; showWarn(false); music(null); $('#tags').innerHTML = '';
   const ov = $('#endOverlay'), st = $('#endStamp');
   if (kind === 'win') { st.textContent = '路試完成'; st.className = 'end-stamp pass'; $('#endReason').textContent = '捱夠 60 秒。'; exam('nod', '路試完成。'); sfx.win(); }
@@ -475,6 +491,7 @@ function finishExam(outcome) {
   const st = G.stats; let grade;
   if (outcome !== 'pass') grade = 'raincoat'; else if (G.written === 5 && st.strikes === 0) grade = 'full'; else grade = 'partial';
   window.WhatIfVisitor?.track('exam_completed', { outcome, grade, written_score: G.written, strikes: st?.strikes || 0 });
+  telemetry.emit('result_viewed', { result_type: 'licence', grade, outcome });
   G.grade = grade; if (outcome !== 'written-fail') store.set('unlocked', true);   // 考過路試（合格或者唔合格）就解鎖挑戰模式（使用者 2026-11-12）
   G.licNo = licNo();
   const rows = [['筆試', `${G.written} / 5`], ['路試', outcome === 'written-fail' ? '未獲安排（筆試不合格）' : st.completed ? '完成 60 秒' : '不合格']];
@@ -528,9 +545,10 @@ function makeCard(kind) {
   g.fillStyle = '#9a9ca0'; g.font = `700 20px ${FONT}`; g.textAlign = 'right'; g.fillText('遮政署署長', Wc - 44, 600); g.textAlign = 'left';
   g.restore(); return c.toDataURL('image/png');
 }
-function applyTaxi() { sfx.tap(); $('#taxiBtn').hidden = true; const s = $('#taxiStatus'); s.hidden = false; s.textContent = '審批中…'; setTimeout(() => { s.textContent = '批出。你而家可以收錢幫人擔遮。'; const im = $('#taxiImg'); im.src = makeCard('taxi'); im.hidden = false; sfx.stamp(); setTimeout(sfx.cash, 250); }, 1500); }
+function applyTaxi() { telemetry.emit('benefit_interest', { benefit_type: 'umbrella_taxi' }); sfx.tap(); $('#taxiBtn').hidden = true; const s = $('#taxiStatus'); s.hidden = false; s.textContent = '審批中…'; setTimeout(() => { s.textContent = '批出。你而家可以收錢幫人擔遮。'; const im = $('#taxiImg'); im.src = makeCard('taxi'); im.hidden = false; sfx.stamp(); setTimeout(sfx.cash, 250); }, 1500); }
 
 function challengeDone(title, reason) {
+  telemetry.emit('result_viewed', { result_type: 'challenge', duration_seconds: R.t });
   window.WhatIfVisitor?.track('challenge_completed', { duration_seconds: R.t, perfect: R.perfect });
   const t = R.t, bestKey = R.hard ? 'bestHard' : 'best', best = store.get(bestKey, 0), isNew = t > best; if (isNew) store.set(bestKey, t);
   $('#crPill').textContent = '④ ' + levelName(); $('#crOther').textContent = R.hard ? '返去普通挑戰' : '試下觀塘收工模式（難）';
@@ -568,6 +586,9 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 function boot() {
+  telemetry.emit('game_screen_view', { stage: 'intro' });
+  setInterval(() => telemetry.tick(), 1000);
+  window.addEventListener('pagehide', event => { if (!event.persisted) telemetry.abandon(); });
   setupSharing();
   $('#shareLicence').addEventListener('click', () => openSharing({ kind: 'licence', background: W.shareBackground(), name: G.name, grade: G.grade, card: $('#cardImg').src, written: G.written, road: G.stats?.completed ? '路試完成 60 秒' : G.stats ? '路試不合格' : '路試未獲安排' }));
   $('#shareChallenge').addEventListener('click', () => openSharing({ kind: 'challenge', hard: R.hard, background: W.shareBackground(), name: G.name, seconds: R.t, perfect: R.perfect, combo: R.maxCombo, speed: speedAt(R.t), best: store.get(R.hard ? 'bestHard' : 'best', R.t), ...shareRank }));

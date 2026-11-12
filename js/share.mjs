@@ -1,3 +1,4 @@
+import { telemetry } from './telemetry.mjs?v=16';
 import { showBrowserHelp } from './browser.mjs?v=16';
 // Local canvas exports: no result image or nickname is uploaded to generate a card.
 export const GAME_URL = 'https://www.whatifhk.com/umbrella-licence/';
@@ -63,23 +64,23 @@ export function setupSharing() {
   document.getElementById('imageClose').onclick=()=>imageDialog.close();
   imageDialog.addEventListener('close',()=>{imageFull.removeAttribute('src');enlarge.focus();});
   document.getElementById('shareBrowserHelp').onclick=()=>showBrowserHelp({source:'share'});
-  const copyLink=async()=>{try{await navigator.clipboard.writeText(GAME_URL);status.textContent='已複製遊戲連結；朋友可以由頭開始考牌。';}catch{const field=document.getElementById('shareCaption');field.hidden=false;field.value=GAME_URL;field.focus();field.select();status.textContent='請長按／選取連結複製。';}};
+  const copyLink=async()=>{try{await navigator.clipboard.writeText(GAME_URL);telemetry.emit('share_link_copied',{result_type:current.kind});status.textContent='已複製遊戲連結；朋友可以由頭開始考牌。';}catch{const field=document.getElementById('shareCaption');field.hidden=false;field.value=GAME_URL;field.focus();field.select();status.textContent='請長按／選取連結複製。';}};
   document.getElementById('shareLinkCopy').onclick=copyLink;
-  document.getElementById('shareLink').onclick=async()=>{if(!navigator.share){await copyLink();return;}try{await navigator.share({title:'如果香港擔遮要考牌？',text:'到你考喇。',url:GAME_URL});status.textContent='已交畀分享選單。遊戲連結唔包含你嘅成績圖。';}catch(e){status.textContent=e.name==='AbortError'?'已取消分享連結。':'分享連結暫時用唔到；請撳「複製遊戲連結」。';}};
+  document.getElementById('shareLink').onclick=async()=>{if(!navigator.share){await copyLink();return;}try{await navigator.share({title:'如果香港擔遮要考牌？',text:'到你考喇。',url:GAME_URL});telemetry.emit('share',{method:'native_link',content_type:'game_link'});status.textContent='已交畀分享選單。遊戲連結唔包含你嘅成績圖。';}catch(e){telemetry.emit(e.name==='AbortError'?'share_cancelled':'share_failed',{result_type:current.kind,format});status.textContent=e.name==='AbortError'?'已取消分享連結。':'分享連結暫時用唔到；請撳「複製遊戲連結」。';}};
   document.getElementById('shareClose').onclick=()=>dialog.close();
   dialog.addEventListener('close',()=>{seq++;asset=null;if(assetURL)URL.revokeObjectURL(assetURL);assetURL=null;preview.removeAttribute('src');opener?.focus();});
-  formatButtons.forEach(b=>b.onclick=()=>{format=b.dataset.format;refresh();});
-  save.onclick=()=>{if(!asset)return;window.WhatIfVisitor?.track('share_image_saved',{mode:current.kind,format});status.textContent='已嘗試下載圖片；如果冇反應，撳圖片放大，再長按儲存或截圖。去 Instagram 上載圖片，再貼上文案／遊戲連結。';};
+  formatButtons.forEach(b=>b.onclick=()=>{format=b.dataset.format;telemetry.emit('share_format_selected',{format,result_type:current.kind});refresh();});
+  save.onclick=()=>{if(!asset)return;telemetry.emit('share_image_saved',{result_type:current.kind,format});window.WhatIfVisitor?.track('share_image_saved',{mode:current.kind,format});status.textContent='已嘗試下載圖片；如果冇反應，撳圖片放大，再長按儲存或截圖。去 Instagram 上載圖片，再貼上文案／遊戲連結。';};
   native.onclick=async()=>{if(!asset)return;const file=new File([asset.blob],filenameFor(current,format),{type:'image/png'});if(!navigator.canShare?.({files:[file]})){status.textContent='呢個瀏覽器未支援分享圖片。請放大圖片，長按儲存或截圖，再去 Instagram／Threads 上載。';return;}
-    try{await navigator.share({files:[file]});status.textContent='已交畀分享選單；發佈前可以喺所選 App 編輯。';window.WhatIfVisitor?.track('share_sheet_completed',{mode:current.kind,format});}catch(e){status.textContent=e.name==='AbortError'?'已取消分享，你仍可以儲存圖片。':'分享選單暫時用唔到；請儲存圖片再上載。';}};
-  copy.onclick=async()=>{const caption=captionFor(current)+'\n'+GAME_URL;try{await navigator.clipboard.writeText(caption);status.textContent='已複製文案同遊戲連結。';}catch{const field=document.getElementById('shareCaption');field.hidden=false;field.value=caption;field.focus();field.select();status.textContent='請長按／選取文字複製。';}};
-  threads.onclick=()=>{window.WhatIfVisitor?.track('share_threads_opened',{mode:current.kind});status.textContent='Threads 會填好文字同連結；想加成績圖，請先儲存，再喺 Threads 附加圖片。';};
+    try{await navigator.share({files:[file]});status.textContent='已交畀分享選單；發佈前可以喺所選 App 編輯。';telemetry.emit('share_sheet_completed',{result_type:current.kind,format});telemetry.emit('share',{method:'native_share_sheet',content_type:'game_result'});window.WhatIfVisitor?.track('share_sheet_completed',{mode:current.kind,format});}catch(e){telemetry.emit(e.name==='AbortError'?'share_cancelled':'share_failed',{result_type:current.kind,format});status.textContent=e.name==='AbortError'?'已取消分享，你仍可以儲存圖片。':'分享選單暫時用唔到；請儲存圖片再上載。';}};
+  copy.onclick=async()=>{const caption=captionFor(current)+'\n'+GAME_URL;try{await navigator.clipboard.writeText(caption);telemetry.emit('share_caption_copied',{result_type:current.kind});status.textContent='已複製文案同遊戲連結。';}catch{const field=document.getElementById('shareCaption');field.hidden=false;field.value=caption;field.focus();field.select();status.textContent='請長按／選取文字複製。';}};
+  threads.onclick=()=>{telemetry.emit('share_threads_opened',{result_type:current.kind});window.WhatIfVisitor?.track('share_threads_opened',{mode:current.kind});status.textContent='Threads 會填好文字同連結；想加成績圖，請先儲存，再喺 Threads 附加圖片。';};
 }
 async function refresh() {
   const version=++seq;asset=null;save.removeAttribute('href');save.setAttribute('aria-disabled','true');native.disabled=true;enlarge.disabled=true;status.textContent='整緊分享圖…';formatButtons.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.format===format)));
   threads.href=threadsURL(current);document.getElementById('shareCaption').hidden=true;
   try{const result=await renderCard({...current},format);const dataURL=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(result.blob);});if(version!==seq||!dialog.open)return;if(assetURL)URL.revokeObjectURL(assetURL);asset=result;assetURL=URL.createObjectURL(result.blob);preview.src=dataURL;enlarge.disabled=false;save.href=assetURL;save.download=filenameFor(current,format);save.removeAttribute('aria-disabled');native.disabled=false;status.textContent='撳圖片放大，可以長按儲存或截圖。Instagram／Threads 要另外附加成績圖；分享遊戲連結只會帶朋友去遊戲首頁。';}
-  catch{if(version!==seq)return;status.textContent='整圖暫時失敗，請重新揀格式再試。你仍可以複製文案或分享到 Threads。';}
+  catch{if(version!==seq)return;telemetry.emit('share_render_failed',{format,result_type:current.kind});status.textContent='整圖暫時失敗，請重新揀格式再試。你仍可以複製文案或分享到 Threads。';}
 }
-export function openSharing(d) { current={...d};opener=document.activeElement;if(!dialog.open)dialog.showModal();refresh();window.WhatIfVisitor?.track('share_opened',{mode:d.kind}); }
+export function openSharing(d) { current={...d};opener=document.activeElement;if(!dialog.open)dialog.showModal();refresh();telemetry.emit('share_opened',{result_type:d.kind});window.WhatIfVisitor?.track('share_opened',{mode:d.kind}); }
 export function updateChallengeRank(rank,total) { if(current?.kind!=='challenge'||!dialog?.open)return;current.rank=rank;current.total=total;refresh(); }

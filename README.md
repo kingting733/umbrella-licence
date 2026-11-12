@@ -81,3 +81,30 @@ separate game-link sharing and copying. Download clicks are attempts, not proof
 of a saved photo. Switching browsers does not transfer the current result or
 visitor cookie; the share-time help asks players to save their result first.
 Real Instagram iPhone/Android behavior still needs physical-device validation.
+
+## Independent gameplay analytics
+
+`js/telemetry.mjs` dispatches `whatif:game` browser events. The website's GA
+adapter listens to this event bus independently of `WhatIfVisitor` and the
+Oracle/MongoDB upload queue. No GA key, player name or internal visitor ID is
+stored here. Standalone copies of the game work without an analytics listener.
+
+The lifecycle covers game start/retry, written/road/challenge level start/end,
+question correctness/timeouts, tutorial begin/complete/skip, terminal exam or
+challenge results, licence achievement, survival score, result viewing and sharing.
+Results are emitted at the end of play before the delayed result-card animation.
+`game_finished` includes both success and failure; `license_earned` requires a
+passed road test. `post_score.score` is challenge survival time in seconds.
+`difficulty` distinguishes normal and hard challenge runs.
+
+Foreground time in an unfinished attempt triggers `game_engaged` at 10 seconds
+and `game_progress` once at 30/60/120/300 seconds. Hidden or unfocused tabs do not
+accumulate this time. This includes reading questions, practice and waiting
+between stages; it is not a measurement of button presses. `game_abandoned` on a
+non-cached page exit is best effort, not guaranteed when mobile apps are killed.
+Retries are per mode/difficulty within the current page load, not lifetime counts.
+
+Share events distinguish opening a dialog, requesting an image download, copying
+links/captions, native share completion/cancellation, and opening Threads. A
+`share_image_saved` event only proves a download was requested; neither it nor a
+native share callback proves an Instagram/Threads post was published.
