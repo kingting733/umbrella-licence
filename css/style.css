@@ -270,6 +270,10 @@ body.ready .loading { display: none; }
 
 /* 觀塘收工模式（難） */
 .btn.hard { background: #d9452f; color: #fff; }
+.btn.boom { background: #6b3fa0; color: #fff; }
+/* 行人路炸彈：淨係得兩個壓低掣，放大啲 */
+#road.boom .controls { grid-template-columns: 1fr 1fr; } #road.boom .cbtn.up, #road.boom .cbtn.close { display: none; } #road.boom .cbtn.down { height: clamp(84px, 14vh, 120px); font-size: clamp(22px, 6vw, 30px); }
+.tag.spare { background: #2f9e5b; color: #fff; } .coach .ck.spare { background: #2f9e5b; }
 .tag u { text-decoration: none; margin-left: 4px; padding: 0 5px; border-radius: 6px; background: #d9452f; color: #fff; font-size: .8em; }
 .tag.run { animation: runshake .22s linear infinite; }
 .tag u.calm { background: #2a2d33; }

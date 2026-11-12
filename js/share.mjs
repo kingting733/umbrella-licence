@@ -1,14 +1,17 @@
-import { telemetry } from './telemetry.mjs?v=16';
-import { showBrowserHelp } from './browser.mjs?v=16';
+import { telemetry } from './telemetry.mjs?v=17';
+import { showBrowserHelp } from './browser.mjs?v=17';
 // Local canvas exports: no result image or nickname is uploaded to generate a card.
 export const GAME_URL = 'https://www.whatifhk.com/umbrella-licence/';
 export const FORMATS = { story: [1080, 1920], post: [1080, 1350] };
 const FONT = '"Noto Sans TC", "PingFang HK", sans-serif';
 const C = { ink: '#16181d', paper: '#f7f6f1', gold: '#ffc94a', green: '#3aa36b', red: '#e23b3b', muted: '#6b6e74' };
+const levelOf = d => d.level || (d.hard ? 'hard' : 'normal');
+const LEVEL_TITLE = { normal: '挑戰模式', hard: '觀塘收工模式（難）', boom: '行人路炸彈（撞人）' };
 export function captionFor(d) {
   const name = String(d.name || '陳大文').slice(0, 8);
   return d.kind === 'challenge'
-    ? `如果香港擔遮要考牌？我係${name}，${d.hard ? '觀塘收工模式' : '挑戰模式'}生存咗 ${Number(d.seconds).toFixed(1)} 秒！你又撐到幾耐？\n#如果香港 #擔遮考牌`
+    ? (levelOf(d) === 'boom' ? `如果香港擔遮要考牌？我係${name}，做咗 ${Number(d.seconds).toFixed(1)} 秒行人路炸彈！你又炸得幾耐？\n#如果香港 #擔遮考牌`
+      : `如果香港擔遮要考牌？我係${name}，${levelOf(d) === 'hard' ? '觀塘收工模式' : '挑戰模式'}生存咗 ${Number(d.seconds).toFixed(1)} 秒！你又撐到幾耐？\n#如果香港 #擔遮考牌`)
     : `如果香港擔遮要考牌？我係${name}，${{full:'全類別批准',partial:'考到縮骨遮牌',raincoat:'收到雨衣令，出街要著雨衣'}[d.grade] || '完成考試'}！到你考喇。\n#如果香港 #擔遮考牌`;
 }
 export function threadsURL(d) { const u = new URL('https://www.threads.com/intent/post'); u.searchParams.set('text', captionFor(d)); u.searchParams.set('url', GAME_URL); return u.href; }
@@ -31,7 +34,7 @@ export async function renderCard(d,format='story') {
   const py=story?900:top+245,ph=story?720:770;
   g.save();g.beginPath();g.roundRect(50,py,980,ph,32);g.clip();g.filter='blur(18px)';drawBackground();g.restore();
   round(g,50,py,980,ph,32,bg?'rgba(247,246,241,.86)':C.paper);
-  const subtitle=d.kind==='challenge'?`④ ${d.hard?'觀塘收工模式（難）':'挑戰模式'} · 生存紀錄`:'③ 領牌 · 考試結果';
+  const subtitle=d.kind==='challenge'?`④ ${LEVEL_TITLE[levelOf(d)]||'挑戰模式'} · 生存紀錄`:'③ 領牌 · 考試結果';
   text(g,subtitle,96,py+53,27,C.muted);
   fit(g,d.name||'陳大文',96,py+112,880,48);
   if(d.kind==='challenge') {
@@ -40,7 +43,7 @@ export async function renderCard(d,format='story') {
     text(g,'秒',540,py+385,38,C.muted,'center');
     const yy=py+425;
     round(g,96,yy,888,95,18,C.gold);
-    text(g,`完美錯開 ${Number(d.perfect)||0} 次`,124,yy+61,42);
+    text(g,`${levelOf(d)==='boom'?'完美撞中':'完美錯開'} ${Number(d.perfect)||0} 次`,124,yy+61,42);
     text(g,`最高連擊 ${Number(d.combo)||0}`,96,yy+153,32);
     text(g,`速度 ×${Number(d.speed||1).toFixed(2)}`,984,yy+153,32,C.ink,'right');
     text(g,`個人最佳 ${Number(d.best||d.seconds).toFixed(1)} 秒`,96,yy+212,30,C.muted);

@@ -1,10 +1,10 @@
-import { telemetry } from './telemetry.mjs?v=16';
-import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=16';
+import { telemetry } from './telemetry.mjs?v=17';
+import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=17';
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=16';
-import * as W from './scene.js?v=16';
-import { submitScore, getBoard, pingOnline, leaveOnline } from './board.js?v=16';
-import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=16';
+import { QUESTIONS, SIGNS } from './questions.js?v=17';
+import * as W from './scene.js?v=17';
+import { submitScore, getBoard, pingOnline, leaveOnline } from './board.js?v=17';
+import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=17';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -132,6 +132,8 @@ const R = { alive: false };
 // 低頭族行到面前突然轉線、派傳單姐姐企定唔郁（淨係你行埋去）；
 // 第二批（使用者 2026-11-12）：狂奔小學生突然掉頭再衝返嚟、一隊 3 個小學生、拖手情侶（唔可以壓低）、遊客停低影相、籃球隊長突然蹲低綁鞋帶（橙牌變藍牌）
 const HARD_BASE = 1.25, HARD_F = { kid: 2.0, rider: 1.5, popo: .8 };
+// 觀塘收工嘅低頭族高過你（182cm、橙牌，要壓低去另一邊）；佢仲會突然轉線，箭咀跟住調轉（使用者 2026-11-12：白牌舉高太易避）
+const HARD_PHONE_CM = 182;
 const clamp01 = x => Math.max(0, Math.min(1, x));
 // 途人位置：distOf(e, r) = 離你幾遠（r = 離擦身仲有幾多秒）。平時以 e.v 行埋嚟；e.win = [[r 由, r 到, 速度, 款]] 嗰段用另一個速度：
 // 停低 / 影相 / 蹲低 = 佢唔郁、淨係你行埋去（VWALK·m）；掉頭 = 負數（行遠咗）。r = 0 永遠係擦身，時間唔會變。
@@ -145,7 +147,7 @@ const winAt = (e, t) => { const r = e.contact - t; return (e.win || []).find(w =
 // 腳步跟住佢自己行咗幾遠（扣返你自己行嗰段）：停低 / 企定 / 蹲低就唔郁腳；掉頭時轉身
 const walkOf = (e, t) => e.still ? null : e.walk0 - (distOf(e, e.contact - t) - VWALK * (e.m || 1) * (e.contact - t)) * 5.5;
 function poseOf(e, t) { const w = winAt(e, t), k = w && w[3]; return { yaw: k === 'uturn' ? Math.PI : 0, kneel: e.crouchT != null ? clamp01((t - e.crouchT) / .25) : 0, photo: k === 'photo' }; }
-function spawnPerson(e) { if (e.type === 'couple') { e.n = W.npcSpawn('ol'); e.n2 = W.npcSpawn('phone'); } else e.n = W.npcSpawn(e.type); }
+function spawnPerson(e) { if (e.type === 'couple') { e.n = W.npcSpawn('ol'); e.n2 = W.npcSpawn('phone'); } else e.n = W.npcSpawn(e.type, e.cm); }
 function releasePerson(e) { W.npcRelease(e.n); if (e.n2) W.npcRelease(e.n2); }
 function placePerson(e, z) {
   const o = poseOf(e, R.t), wk = walkOf(e, R.t);
@@ -158,24 +160,34 @@ function personScreen(e) {
 }
 const sideOf = e => e.switched ? -e.side + 2 * e.side * clamp01((R.t - e.switchT) / .3) : e.side;   // 轉線：0.3 秒滑過去
 const speedAt = t => R.mode === 'challenge' ? (R.hard ? HARD_BASE : 1) * Math.pow(1.2, Math.floor(t / 10)) : 1;
-const levelName = () => R.hard ? '觀塘收工模式' : '挑戰模式';
+// 挑戰模式三個玩法：normal 普通、hard 觀塘收工（難）、boom 行人路炸彈（反轉玩：今次要撞中每個人）（使用者 2026-11-12）
+// 行人路炸彈用觀塘收工嘅一套（×1.25 起步、小學生狂奔、一隊小學生、拖手情侶、低頭族轉線…）：R.hard 都係 true，R.boom 再改判定同掣
+const LEVEL = { normal: ['挑戰模式', '普通'], hard: ['觀塘收工模式', '觀塘收工（難）'], boom: ['行人路炸彈', '行人路炸彈（撞人）'] };
+const levelName = () => LEVEL[R.lv || 'normal'][0];
+const BOARD_MODES = ['normal', 'hard'];   // 資料庫有獨立排行榜嘅玩法（行人路炸彈未開表：唔好上載，否則會入咗普通榜）
+// 行人路炸彈：淨係得【壓低 ←】【壓低 →】兩個掣，唔理高矮，壓落佢行嗰邊就撞中（使用者 2026-11-12）；拖手情侶兩邊都撞得中；冇阿婆、冇招牌（收唔到遮）
+const towardSide = side => side < 0 ? 'downL' : 'downR';
+const towardArrow = side => side < 0 ? '← 壓低' : '壓低 →';
+const BOOM_HINT_UNTIL = 10;   // 行人路炸彈頭 10 秒標籤寫埋撳咩
 
-function startRoad(mode, hard = false) {
+function startRoad(mode, lv = 'normal') {
+  if (lv === true) lv = 'hard'; if (mode !== 'challenge' || !LEVEL[lv]) lv = 'normal';
   if (R.mode === 'tutorial' && !R.ended) { telemetry.emit('tutorial_skipped'); telemetry.endStage(false); }
-  if (mode === 'challenge') { telemetry.start('challenge', hard ? 'hard' : 'normal'); telemetry.stage('challenge'); telemetry.emit('challenge_started'); }
+  if (mode === 'challenge') { telemetry.start('challenge', lv); telemetry.stage('challenge'); telemetry.emit('challenge_started'); }
   else if (mode === 'tutorial') { telemetry.stage('tutorial'); telemetry.emit('tutorial_begin'); }
   else { telemetry.stage('road'); telemetry.emit('road_started'); }
-  if (mode === 'challenge') { window.WhatIfVisitor?.setUsername(G.name); window.WhatIfVisitor?.track('game_started', { mode, level: hard ? 'hard' : 'normal' }); window.WhatIfVisitor?.track('challenge_started', { level: hard ? 'hard' : 'normal' }); } else if (mode === 'test') window.WhatIfVisitor?.track('road_started');
+  if (mode === 'challenge') { window.WhatIfVisitor?.setUsername(G.name); window.WhatIfVisitor?.track('game_started', { mode, level: lv }); window.WhatIfVisitor?.track('challenge_started', { level: lv }); } else if (mode === 'test') window.WhatIfVisitor?.track('road_started');
   audio(); clearEvents(); W.roadReset(); W.setMode('road'); coachHide();
   const tut = mode === 'tutorial';
-  Object.assign(R, { mode, hard: mode === 'challenge' && hard, alive: true, running: tut, ended: false, pre: tut ? 0 : 3.2, coach: null, tut: tut ? { done: new Set(), lesson: 0, idle: null, miss: 0, exitFor: null } : null, t: 0, state: 'normal', stateUntil: 0, lastAct: -9, lastActType: '', coverUntil: -1, wet: 0,
+  Object.assign(R, { mode, lv, hard: lv === 'hard' || lv === 'boom', boom: lv === 'boom', alive: true, running: tut, ended: false, pre: tut ? 0 : 3.2, coach: null, tut: tut ? { done: new Set(), lesson: 0, idle: null, miss: 0, exitFor: null } : null, t: 0, state: 'normal', stateUntil: 0, lastAct: -9, lastActType: '', coverUntil: -1, wet: 0,
     strikes: 0, lives: mode === 'test' ? 3 : 1, log: [], ok: 0, perfect: 0, combo: 0, maxCombo: 0, perfectRun: 0, maxPerfectRun: 0, wetCount: 0, signs: 0, signPerfect: 0, popoHit: false,
     events: [], lastCover: 0, lastContact: 1.4, lastKind: '', lastType: '', lastV: 0, lastSide: 1, gid: 0, nextSignAt: 8 + rand(0, 2), level: 0, lastTs: 0 });
   if (tut) buildTutorial();
   $('#hudMode').textContent = mode === 'test' ? '② 路試' : tut ? '② 路試練習' : '④ ' + levelName();
-  $('#lives').innerHTML = tut ? '' : '<i></i>'.repeat(R.lives); $('#road').classList.toggle('tut', tut); if (tut) $('#hudTime').textContent = '練習'; $('#combo').textContent = ''; $('#endOverlay').hidden = true; $('#warn').hidden = true; $('#banner').hidden = true; $('#wet').hidden = true; $('#tags').innerHTML = '';
+  $('#lives').innerHTML = tut ? '' : '<i></i>'.repeat(R.lives); $('#road').classList.toggle('tut', tut); $('#road').classList.toggle('boom', R.boom); if (tut) $('#hudTime').textContent = '練習'; $('#combo').textContent = ''; $('#endOverlay').hidden = true; $('#warn').hidden = true; $('#banner').hidden = true; $('#wet').hidden = true; $('#tags').innerHTML = '';
   $('#road').classList.remove('soaked'); updateButtons(); show('road'); W.resize();
-  exam('neutral', mode === 'test' ? '準備好就出發。' : R.hard ? '觀塘收工時間！小學生狂奔、外賣仔飛車，阿婆會停，低頭族會轉線。' : '挑戰模式。撞一次就完。'); ambience('open');
+  exam('neutral', mode === 'test' ? '準備好就出發。' : R.boom ? '行人路炸彈？考生，我當冇見過你。' : R.hard ? '觀塘收工時間！小學生狂奔、外賣仔飛車，阿婆會停，低頭族會轉線。' : '挑戰模式。撞一次就完。'); ambience('open');
+  if (R.boom) coachSay('<b>行人路炸彈</b>：觀塘收工，今次要<b>撞中</b>每一個人，放生一個就完！<br>唔理高定矮，佢喺邊邊行，就撳嗰邊：<b>← 壓低</b> 或者 <b>壓低 →</b><br>低頭族會轉線、拖手情侶兩邊都撞得中', 7);
   if (tut) { $('#count').hidden = true; music('road'); } else showCount(3);
 }
 function showCount(v, go) { const c = $('#count'); c.textContent = v; c.hidden = false; c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop'); if (go) setTimeout(() => { c.hidden = true; }, 600); }
@@ -280,14 +292,14 @@ function genEvents() {
     // 行出瓦遮頭之後，下一個人要隔多 1.6 秒，畀時間開返把遮
     let gap = rand(GAP[0], GAP[1]) / m; if (R.lastKind === 'sign') gap = Math.max(gap, R.lastCover + 1.6 / m);
     const contact = R.lastContact + gap; let e;
-    if (contact >= R.nextSignAt) {
+    if (!R.boom && contact >= R.nextSignAt) {
       // 瓦遮頭長度：騎樓 4.4–6 米、招牌連簷篷 3.6–4.8 米（路試行速 1.2 m/s → 約 3–5 秒）
       const style = Math.random() < .5 ? 'arcade' : 'board', v = VWALK * m, len = style === 'arcade' ? rand(4.4, 6) : rand(3.6, 4.8);
       e = { kind: 'sign', contact, style, len, v, spawned: false, resolved: false, warned: false };
       R.lastCover = len / v + .2;
       R.nextSignAt = contact + rand(9, 13); R.lastKind = 'sign';
     } else {
-      const pool = ['popo', 'popo', 'kid', 'flyer', 'ol', 'phone', 'rider', 'muscle', 'tourist', 'baller']; if (R.hard) pool.push('kid', 'couple', 'group');
+      const pool = ['popo', 'popo', 'kid', 'flyer', 'ol', 'phone', 'rider', 'muscle', 'tourist', 'baller']; if (R.hard) pool.push('kid', 'couple', 'group'); if (R.boom) pool.splice(0, 2);   // 行人路炸彈唔出阿婆
       let type; do { type = pick(pool); } while (type === R.lastType);
       R.lastType = type; R.lastKind = 'person';
       // 前面嗰個人快過呢個：佢會喺後面追過呢個人，所以呢個人一定行另一邊，唔好兩個疊埋（標籤都疊埋睇唔到）
@@ -309,6 +321,7 @@ function genEvents() {
       e = { kind: 'person', contact, type, f, m, side, v, win, spawned: false, resolved: false, walk0: Math.random() * 6,
         run: R.hard && (type === 'kid' || type === 'rider'), still, crouchAt,
         switchAt: R.hard && type === 'phone' ? at(5, 8, .9) : 0 };
+      if (R.hard && type === 'phone') { e.cm = HARD_PHONE_CM; e.need = 'down'; }
       R.lastV = type === 'couple' ? 0 : v; R.lastSide = side;
     }
     R.lastContact = contact; R.events.push(e);
@@ -330,7 +343,7 @@ function step(dt) {
   if (R.state === 'closed' && !covered) { R.wet += dt; if (R.wet >= WET) { R.wet = 0; R.wetCount++; R.state = 'normal'; updateButtons(); fault('淋到濕晒！', '冇瓦遮頭仲收住遮，淋到成身濕。', 'wet'); if (R.ended) return; } }
   else R.wet = Math.max(0, R.wet - dt * 2);
   $('#wet').hidden = R.wet <= .05; $('#wetFill').style.width = (R.wet / WET * 100) + '%'; $('#road').classList.toggle('soaked', R.state === 'closed' && !covered);
-  if (R.mode === 'challenge') { const lv = Math.floor(R.t / 10); if (lv > R.level) { R.level = lv; banner(`加速 ×${speedAt(R.t).toFixed(2)}`); exam('neutral', pick(R.hard ? ['趕收工呀！', '人人衝緊。', '仲頂得順？', '六點喇。'] : ['快啲喇。', '人多咗。', '仲頂得順？', '考生，專心。'])); sfx.speed(); musicSpeed(Math.min(1.6, speedAt(R.t)), Math.min(5, lv + (R.hard ? 1 : 0))); } }
+  if (R.mode === 'challenge') { const lv = Math.floor(R.t / 10); if (lv > R.level) { R.level = lv; banner(`加速 ×${speedAt(R.t).toFixed(2)}`); exam('neutral', pick(R.boom ? ['你仲撞？', '我報警喇。', '人人走避！', '佢哋走晒喇。'] : R.hard ? ['趕收工呀！', '人人衝緊。', '仲頂得順？', '六點喇。'] : ['快啲喇。', '人多咗。', '仲頂得順？', '考生，專心。'])); sfx.speed(); musicSpeed(Math.min(1.6, speedAt(R.t)), Math.min(5, lv + (R.hard ? 1 : 0))); } }
   if (R.mode !== 'tutorial') genEvents();
   for (const e of R.events) {
     if (e.resolved) continue;
@@ -370,7 +383,8 @@ function resolve(e) {
     return;
   }
   if (R.t < R.coverUntil) return;   // 瓦遮頭底下大家都冇開遮，唔使避
-  const p = PEOPLE[e.type], need = e.need || p.need, mySide = awaySide(e.side), isDown = s === 'downL' || s === 'downR';
+  const p = PEOPLE[e.type], need = e.need || p.need, mySide = awaySide(e.side), isDown = s === 'downL' || s === 'downR', cm = e.cm || CM[e.type];
+  if (R.boom) { boomResolve(e, p, need, cm, s); return; }
   let ok = false;
   if (s === 'closed') ok = true;
   else if (need === 'up') ok = s === 'up';
@@ -382,19 +396,38 @@ function resolve(e) {
   if (e.type === 'couple') { fault(isDown ? '撞散情侶！' : '插親人！', '佢哋拖住手成條路咁闊，壓低去邊都會撞到，要撳【舉高】。', isDown ? 'bump' : 'poke'); return; }
   if (e.crouched) { fault('插親人！', '籃球隊長突然蹲低綁鞋帶，矮咗一大截，要改撳【舉高】。', 'poke'); return; }
   const sw = e.side < 0 ? '左' : '右', other = e.side < 0 ? '右' : '左', arrow = awayArrow(e.side);
-  if (isDown && s !== mySide && p.need !== 'up') fault('壓錯邊！', `${p.name}喺你${sw}邊行過，要將遮壓低去${other}邊【${arrow}】。`, 'side');
-  else if (p.need === 'up') fault('插親人！', `遮骨刮中${p.name}（${CM[e.type]}cm），要撳【舉高】。`, 'poke');
-  else if (p.need === 'down') fault('撞遮！', `${p.name}（${CM[e.type]}cm）把遮同你撼個正，要撳【${arrow}】。`, 'bump');
+  if (isDown && s !== mySide && need !== 'up') fault('壓錯邊！', `${p.name}喺你${sw}邊行過，要將遮壓低去${other}邊【${arrow}】。`, 'side');
+  else if (need === 'up') fault('插親人！', `遮骨刮中${p.name}（${cm}cm），要撳【舉高】。`, 'poke');
+  else if (need === 'down') fault('撞遮！', `${p.name}（${cm}cm）把遮同你撼個正，要撳【${arrow}】。`, 'bump');
   else fault('撞遮！', `${p.name}同你差唔多高，企定唔郁就撼埋一齊。`, 'bump');
+}
+function boomResolve(e, p, need, cm, s) {   // 行人路炸彈：撞中先算過關；放生一個就完
+  const to = towardSide(e.side), sw = e.side < 0 ? '左' : '右', arrow = towardArrow(e.side), isDown = s === 'downL' || s === 'downR';
+  if (e.type === 'popo') {
+    if (s === 'up' || s === 'closed') { success(s === 'up' && R.t - R.lastAct <= PERFECT, false, true); return; }
+    R.popoHit = true; endRoad('instant', '即時取消資格', '炸彈都有底線：連阿婆都撞。'); return;
+  }
+  if (e.type === 'couple' ? isDown : s === to) { boomHit(false, R.t - R.lastAct <= PERFECT); return; }   // 情侶成條路咁闊，壓去邊都撞中
+  const why = isDown ? `壓錯邊：${p.name}喺你${sw}邊行過，要撳【${arrow}】。` : `${p.name}喺你${sw}邊行咗過去，你都冇出手。要撳【${arrow}】。`;
+  fault('放生咗！', why, 'miss');
+}
+const HITLINES = ['撞中！', '撼正！', '中！', '再嚟！'], BOOMLINES = ['考生！你做乜！', '我冇睇到。', '呢個唔計分。', '……', '佢瞪住你呀。', '你係咪想考雨衣令？'];
+function boomHit(up, perfect) {
+  R.ok++; R.combo++; R.maxCombo = Math.max(R.maxCombo, R.combo);
+  if (perfect) { R.perfect++; R.perfectRun++; R.maxPerfectRun = Math.max(R.maxPerfectRun, R.perfectRun); } else R.perfectRun = 0;
+  pop(perfect ? 'PERFECT' : pick(HITLINES), perfect ? 'perfect' : 'good'); up ? sfx.bump() : sfx.poke(); if (perfect) sfx.perfect(); buzz(40);
+  $('#road').classList.remove('hit'); void $('#road').offsetWidth; $('#road').classList.add('hit');
+  $('#combo').textContent = R.combo >= 2 ? `撞中 ×${R.combo}` : '';
+  if (Math.random() < .4) exam(Math.random() < .5 ? 'shock' : 'frown', pick(BOOMLINES));
 }
 const OKLINES = ['嗯。', '繼續。', '穩陣。', '可以。'], PERFLINES = ['教科書式錯開。', '有啲料。', '好準。', '我都想學。'];
 const FAULTLINES = { wet: '濕晒喇考生。', sign: '招牌都畀你刮花。', side: '左右都分唔清？', poke: '險過剃頭。', bump: '睇路呀！' };
 // 路試犯錯：間中（約三成）黃 Sir 改鬧「一二一二把遮啊！」
 const SCOLD = '一二一二把遮啊！', SCOLD_P = .35;
-function success(perfect, isSign) {
-  R.ok++; R.combo++; R.maxCombo = Math.max(R.maxCombo, R.combo);
+function success(perfect, isSign, spare) {   // spare：放過阿婆（唔計撞中數）
+  if (!spare) R.ok++; R.combo++; R.maxCombo = Math.max(R.maxCombo, R.combo);
   if (perfect) { R.perfect++; R.perfectRun++; R.maxPerfectRun = Math.max(R.maxPerfectRun, R.perfectRun); if (isSign) R.signPerfect++; } else R.perfectRun = 0;
-  pop(perfect ? 'PERFECT' : pick(['錯開！', '好！', '過咗！']), perfect ? 'perfect' : 'good');
+  pop(spare ? '放過阿婆' : isSign && R.boom ? '收遮！' : perfect ? 'PERFECT' : pick(['錯開！', '好！', '過咗！']), perfect ? 'perfect' : 'good');
   perfect ? sfx.perfect() : sfx.ok();
   $('#combo').textContent = R.combo >= 2 ? `連擊 ×${R.combo}` : '';
   if (perfect && Math.random() < .6) exam('nod', pick(PERFLINES)); else if (R.combo % 5 === 0) exam('nod', `連擊 ${R.combo}，唔錯。`); else if (Math.random() < .25) exam('neutral', pick(OKLINES));
@@ -402,7 +435,7 @@ function success(perfect, isSign) {
 function fault(title, reason, key) {
   if (R.mode === 'tutorial') { tutFault(title, reason, key); return; }
   R.strikes++; R.combo = 0; R.perfectRun = 0; R.log.push(`${R.t.toFixed(1)} 秒｜${title.replace('！', '')}：${reason}`);
-  $('#road').classList.remove('hit'); void $('#road').offsetWidth; $('#road').classList.add('hit'); buzz([60, 40, 120]); if (key === 'wet') sfx.splash(); else if (key === 'poke') sfx.poke(); else if (key !== 'sign') sfx.bump();
+  $('#road').classList.remove('hit'); void $('#road').offsetWidth; $('#road').classList.add('hit'); buzz([60, 40, 120]); if (key === 'wet') sfx.splash(); else if (key === 'poke') sfx.poke(); else if (key === 'miss') sfx.wrong(); else if (key !== 'sign') sfx.bump();
   pop(title, 'bad'); $('#combo').textContent = '';
   const lives = $$('#lives i'); if (lives[R.strikes - 1]) lives[R.strikes - 1].className = 'x';
   if (R.mode === 'challenge') { endRoad('dead', title.replace('！', ''), reason); return; }
@@ -413,7 +446,7 @@ function endRoad(kind, title, reason) {
   if (R.ended) return;
   const stats = { duration_seconds: R.t, perfect: R.perfect, max_combo: R.maxCombo, strikes: R.strikes, obstacles_avoided: R.ok, failure_reason: kind === 'win' ? 'none' : kind };
   telemetry.endStage(kind === 'win', stats);
-  if (R.mode === 'challenge') telemetry.finish('challenge_completed', { ...stats, outcome: 'ended', new_record: R.t > store.get(R.hard ? 'bestHard' : 'best', 0) });
+  if (R.mode === 'challenge') telemetry.finish('challenge_completed', { ...stats, outcome: 'ended', new_record: R.t > store.get(bestKeyOf(R.lv), 0) });
   else telemetry.finish('exam_completed', { ...stats, written_score: G.written, outcome: kind === 'win' ? 'pass' : 'road-fail', grade: kind !== 'win' ? 'raincoat' : G.written === 5 && R.strikes === 0 ? 'full' : 'partial' });
   R.ended = true; R.running = false; showWarn(false); music(null); $('#tags').innerHTML = '';
   const ov = $('#endOverlay'), st = $('#endStamp');
@@ -432,6 +465,7 @@ function titleFor() { if (R.popoHit) return '阿婆殺手'; if (R.maxPerfectRun 
 function act(a) {
   if (!R.alive || !R.running || R.ended) return;
   if (R.coach && R.coach.block) { if (!R.coach.want || !R.coach.want.includes(a)) { coachWrong(); return; } coachGo(); }
+  if (R.boom && (a === 'up' || a === 'close')) return;   // 行人路炸彈淨係得兩個壓低掣
   R.lastAct = R.t; R.lastActType = a;
   if (a === 'close') { R.state = R.state === 'closed' ? 'normal' : 'closed'; R.state === 'closed' ? sfx.close() : sfx.open(); }
   else { R.state = a; R.stateUntil = R.t + HOLD; a === 'up' ? sfx.raise() : sfx.lower(a === 'downL' ? -1 : 1); }
@@ -452,7 +486,7 @@ function banner(text) { const b = $('#banner'); b.textContent = text; b.hidden =
 function hardLabel(e) {   // 觀塘收工：標籤上提示呢個人有咩特別
   const r = e.contact - R.t, w = winAt(e, R.t), k = w && w[3];
   if (e.group) return `<u>一隊 ×${R.events.filter(x => x.group === e.group && !x.resolved).length}</u>`;
-  if (e.type === 'couple') return '<u class="calm">唔可以壓低</u>';
+  if (e.type === 'couple') return R.boom ? '<u>兩邊都中</u>' : '<u class="calm">唔可以壓低</u>';
   if (k === 'uturn') return '<u class="calm">掉頭</u>';
   if (k === 'crouch') return '<u>蹲低！</u>';
   if (k === 'stop') return '<u class="calm">停低</u>';
@@ -465,7 +499,7 @@ function hardLabel(e) {   // 觀塘收工：標籤上提示呢個人有咩特別
 }
 function drawTags() {
   const box = $('#tags'); if (!R.running) return;
-  const hint = (R.mode === 'test' && R.t < HINT_UNTIL) || R.mode === 'tutorial', want = [];
+  const hint = (R.mode === 'test' && R.t < HINT_UNTIL) || R.mode === 'tutorial' || (R.boom && R.t < BOOM_HINT_UNTIL), want = [];
   const next = R.events.find(e => e.kind === 'person' && !e.resolved);   // 最近嗰個先係要處理嘅
   for (const e of R.events) if (e.kind === 'person' && e.spawned && !e.resolved) {
     const left = e.contact - R.t, z = zOf(e, R.t); if (z < -15 || left < .12 || (e.still && left > 4.5)) continue;
@@ -476,11 +510,14 @@ function drawTags() {
   while (els.length < want.length) { const d = document.createElement('div'); d.className = 'tag'; box.appendChild(d); els.push(d); }
   els.forEach((el, i) => {
     const w = want[i]; if (!w) { el.style.display = 'none'; return; }
-    const p = PEOPLE[w.e.type], need = w.e.need || p.need, arrow = w.e.side < 0 ? '→' : '←';   // 箭咀 = 要壓低嘅方向（佢嘅另一邊）
-    const hintTxt = !hint ? '' : need === 'up' ? '舉高' : need === 'down' ? awayArrow(w.e.side) : '舉高 / ' + awayArrow(w.e.side);
+    const p = PEOPLE[w.e.type], need = w.e.need || p.need, spare = R.boom && w.e.type === 'popo';
+    // 箭咀 = 要壓低嘅方向：平時壓去佢嘅另一邊（避開），行人路炸彈壓落佢嗰邊（撞中；情侶兩邊都得）
+    const arrow = R.boom ? (w.e.type === 'couple' ? '← →' : w.e.side < 0 ? '←' : '→') : (w.e.side < 0 ? '→' : '←'), showArrow = R.boom || need !== 'up';
+    const hintTxt = !hint ? '' : R.boom ? (w.e.type === 'couple' ? '兩邊都得' : towardArrow(w.e.side))
+      : need === 'up' ? '舉高' : need === 'down' ? awayArrow(w.e.side) : '舉高 / ' + awayArrow(w.e.side);
     const now = R.mode === 'tutorial' && R.tut.lesson < 6 && w.e.contact - R.t <= NOW_T && w.e.contact >= R.coverUntil;
-    el.style.display = ''; el.className = 'tag ' + need + (w.e.run ? ' run' : '') + (now ? ' now' : '') + (w.e !== next ? ' later' : '') + (R.coach && R.coach.ev === w.e ? ' focus' : '');
-    el.innerHTML = `<b>${w.e.crouched ? '蹲低' : CM[w.e.type] + 'cm'}</b> ${p.name}${hardLabel(w.e)}${need !== 'up' ? `<i>${arrow}</i>` : ''}${hintTxt ? `<small>${hintTxt}</small>` : ''}${now ? '<em>撳！</em>' : ''}`;
+    el.style.display = ''; el.className = 'tag ' + (spare ? 'spare' : need) + (w.e.run ? ' run' : '') + (now ? ' now' : '') + (w.e !== next ? ' later' : '') + (R.coach && R.coach.ev === w.e ? ' focus' : '');
+    el.innerHTML = `<b>${w.e.crouched ? '蹲低' : (w.e.cm || CM[w.e.type]) + 'cm'}</b> ${p.name}${spare ? '<u class="calm">唔好撞</u>' : hardLabel(w.e)}${showArrow ? `<i>${arrow}</i>` : ''}${hintTxt ? `<small>${hintTxt}</small>` : ''}${now ? '<em>撳！</em>' : ''}`;
     const bw = box.clientWidth, half = el.offsetWidth / 2 + 8;   // 唔好俾標籤出咗畫面
     el.style.left = Math.min(bw - half, Math.max(half, w.s.x * bw)) + 'px'; el.style.top = (Math.max(.14, w.s.y) * 100) + '%';
   });
@@ -502,7 +539,7 @@ function finishExam(outcome) {
   const verdict = { raincoat: ['不合格', '即日起出街須著<b>雨衣</b>。下次可預約考試日期：2028 年 3 月。'], partial: ['有條件合格', '批出第 1 類：<b>縮骨遮</b>。其他類別要零犯錯先批。'], full: ['全科合格', '批出<b>全部類別</b>，仲可以申請做「Uber Umbrella」司機。'] }[grade];
   $('#resPill').textContent = verdict[0]; $('#resPill').className = 'pill ' + (grade === 'raincoat' ? 'red' : grade === 'full' ? 'green' : 'blue'); $('#resLine').innerHTML = verdict[1];
   $('#cardImg').src = makeCard(grade); $('#taxiArea').hidden = grade !== 'full'; $('#taxiImg').hidden = true; $('#taxiStatus').hidden = true; $('#taxiBtn').hidden = false;
-  $('#challengeBtn').hidden = $('#hardBtn').hidden = outcome === 'written-fail'; W.setMode('menu', grade); show('result'); setTimeout(sfx.stamp, 400);
+  $('#challengeBtn').hidden = $('#hardBtn').hidden = $('#boomBtn').hidden = outcome === 'written-fail'; W.setMode('menu', grade); show('result'); setTimeout(sfx.stamp, 400);
 }
 function licNo() { const d = [...Array(6)].map(() => Math.floor(Math.random() * 10)); const sum = d.reduce((s, v, i) => s + v * (7 - i), 0) + 21 * 9; const c = 11 - (sum % 11); return `U${d.join('')}(${c === 11 ? 0 : c === 10 ? 'A' : c})`; }
 const today = () => { const n = new Date(); return `${String(n.getDate()).padStart(2, '0')}-${String(n.getMonth() + 1).padStart(2, '0')}-${n.getFullYear()}`; };
@@ -550,19 +587,21 @@ function applyTaxi() { telemetry.emit('benefit_interest', { benefit_type: 'umbre
 function challengeDone(title, reason) {
   telemetry.emit('result_viewed', { result_type: 'challenge', duration_seconds: R.t });
   window.WhatIfVisitor?.track('challenge_completed', { duration_seconds: R.t, perfect: R.perfect });
-  const t = R.t, bestKey = R.hard ? 'bestHard' : 'best', best = store.get(bestKey, 0), isNew = t > best; if (isNew) store.set(bestKey, t);
-  $('#crPill').textContent = '④ ' + levelName(); $('#crOther').textContent = R.hard ? '返去普通挑戰' : '試下觀塘收工模式（難）';
+  const t = R.t, bestKey = bestKeyOf(R.lv), best = store.get(bestKey, 0), isNew = t > best; if (isNew) store.set(bestKey, t);
+  $('#crPill').textContent = '④ ' + levelName(); $('#crOther').textContent = R.lv === 'normal' ? '試下觀塘收工模式（難）' : '返去普通挑戰';
   $('#crTime').textContent = t.toFixed(1); $('#crBest').innerHTML = isNew ? '<span class="pill gold">新紀錄</span>' : `最佳紀錄 ${best.toFixed(1)} 秒`;
-  $('#crRows').innerHTML = [['難度', R.hard ? '觀塘收工（難）' : '普通'], ['最高速度', `×${speedAt(t).toFixed(2)}`], ['錯開', `${R.ok} 個（完美 ${R.perfect}）`], ['最高連擊', `${R.maxCombo}`], ['點死', title ? `${title}` : '—']].map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
+  $('#crRows').innerHTML = [['難度', LEVEL[R.lv][1]], ['最高速度', `×${speedAt(t).toFixed(2)}`], [R.boom ? '撞中' : '錯開', `${R.ok} 個（完美 ${R.perfect}）`], ['最高連擊', `${R.maxCombo}`], ['點死', title ? `${title}` : '—']].map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
   $('#crReason').textContent = reason || ''; show('challengeResult'); setTimeout(isNew ? sfx.win : sfx.stamp, 300);
-  loadBoard(t, R.hard ? 'hard' : 'normal');
+  loadBoard(t, R.lv);
 }
+const bestKeyOf = lv => ({ normal: 'best', hard: 'bestHard', boom: 'bestBoom' })[lv] || 'best';
 
 // ---------- 挑戰模式排行榜 ----------
 let boardSeq = 0, shareRank = null;
 async function loadBoard(t, mode) {
   shareRank = null; const seq = ++boardSeq, list = $('#boardList'), status = $('#boardStatus');
   list.innerHTML = ''; $('#boardMe').textContent = ''; status.hidden = false; status.textContent = '上載成績、載入排行榜…';
+  if (!BOARD_MODES.includes(mode)) { status.textContent = `${LEVEL[mode] ? LEVEL[mode][0] : '呢個玩法'}排行榜準備緊，暫時淨係記你自己嘅最佳紀錄。`; return; }
   try {
     try { await submitScore(G.name, t, mode); } catch (e) { /* 上載失敗都照樣顯示排行榜 */ }
     const b = await getBoard(mode); if (seq !== boardSeq) return;
@@ -591,28 +630,30 @@ function boot() {
   window.addEventListener('pagehide', event => { if (!event.persisted) telemetry.abandon(); });
   setupSharing();
   $('#shareLicence').addEventListener('click', () => openSharing({ kind: 'licence', background: W.shareBackground(), name: G.name, grade: G.grade, card: $('#cardImg').src, written: G.written, road: G.stats?.completed ? '路試完成 60 秒' : G.stats ? '路試不合格' : '路試未獲安排' }));
-  $('#shareChallenge').addEventListener('click', () => openSharing({ kind: 'challenge', hard: R.hard, background: W.shareBackground(), name: G.name, seconds: R.t, perfect: R.perfect, combo: R.maxCombo, speed: speedAt(R.t), best: store.get(R.hard ? 'bestHard' : 'best', R.t), ...shareRank }));
+  $('#shareChallenge').addEventListener('click', () => openSharing({ kind: 'challenge', hard: R.lv === 'hard', level: R.lv, background: W.shareBackground(), name: G.name, seconds: R.t, perfect: R.perfect, combo: R.maxCombo, speed: speedAt(R.t), best: store.get(bestKeyOf(R.lv), R.t), ...shareRank }));
   W.initWorld($('#world'));
   try { G.portraits = W.makePortraits(); for (const k of ['full', 'raincoat', 'taxi']) { PHOTO[k] = new Image(); PHOTO[k].src = G.portraits.you[k]; } exam('neutral'); } catch (e) { G.portraits = null; }
   $('#nameInput').value = store.get('name', ''); G.name = store.get('name', '') || G.name;
-  const unlocked = store.get('unlocked', false); $('#introChallengeBtn').hidden = $('#introHardBtn').hidden = !unlocked;
+  const unlocked = store.get('unlocked', false); $('#introChallengeBtn').hidden = $('#introHardBtn').hidden = $('#introBoomBtn').hidden = !unlocked;
   window.addEventListener('pointerdown', audio, true); window.addEventListener('keydown', audio, true);   // 第一下撳就開聲（手機規定）
   $('#soundBtn').addEventListener('click', cycleSound); soundUI(false);
   ping();
   $('#startBtn').addEventListener('click', startWritten);
   const introGo = hard => { G.name = ($('#nameInput').value || '').trim() || G.name; store.set('name', G.name); startRoad('challenge', hard); };
-  $('#introChallengeBtn').addEventListener('click', () => introGo(false));
-  $('#introHardBtn').addEventListener('click', () => introGo(true));
+  $('#introChallengeBtn').addEventListener('click', () => introGo('normal'));
+  $('#introHardBtn').addEventListener('click', () => introGo('hard'));
+  $('#introBoomBtn').addEventListener('click', () => introGo('boom'));
   $('#nextBtn').addEventListener('click', nextQ);
   $('#wrBtn').addEventListener('click', () => { sfx.tap(); if (G.written >= 4) { W.setMode('menu', 'intro'); setupRoadIntro(); show('roadIntro'); } else { G.stats = null; finishExam('written-fail'); } });
   $('#roadStartBtn').addEventListener('click', () => startRoad('test'));
   $('#tutBtn').addEventListener('click', () => startRoad('tutorial'));
-  $('#retryBtn').addEventListener('click', () => { sfx.tap(); W.setMode('menu', 'intro'); $('#introChallengeBtn').hidden = $('#introHardBtn').hidden = !store.get('unlocked', false); show('intro'); });
+  $('#retryBtn').addEventListener('click', () => { sfx.tap(); W.setMode('menu', 'intro'); $('#introChallengeBtn').hidden = $('#introHardBtn').hidden = $('#introBoomBtn').hidden = !store.get('unlocked', false); show('intro'); });
   $('#challengeBtn').addEventListener('click', () => startRoad('challenge'));
-  $('#hardBtn').addEventListener('click', () => startRoad('challenge', true));
+  $('#hardBtn').addEventListener('click', () => startRoad('challenge', 'hard'));
+  $('#boomBtn').addEventListener('click', () => startRoad('challenge', 'boom'));
   $('#taxiBtn').addEventListener('click', applyTaxi);
-  $('#crAgain').addEventListener('click', () => startRoad('challenge', R.hard));
-  $('#crOther').addEventListener('click', () => startRoad('challenge', !R.hard));
+  $('#crAgain').addEventListener('click', () => startRoad('challenge', R.lv));
+  $('#crOther').addEventListener('click', () => startRoad('challenge', R.lv === 'normal' ? 'hard' : 'normal'));
   $('#crBack').addEventListener('click', () => { sfx.tap(); if (G.grade) { W.setMode('menu', G.grade); show('result'); } else { W.setMode('menu', 'intro'); show('intro'); } });
   $$('.cbtn').forEach(b => b.addEventListener('pointerdown', ev => { ev.preventDefault(); act(b.dataset.act); }));
   window.addEventListener('keydown', ev => {

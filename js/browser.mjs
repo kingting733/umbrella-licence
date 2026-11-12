@@ -1,4 +1,4 @@
-import { telemetry } from './telemetry.mjs?v=16';
+import { telemetry } from './telemetry.mjs?v=17';
 export const GAME_LINK = 'https://www.whatifhk.com/umbrella-licence/';
 export function browserInfo(ua = '', platform = '', touchPoints = 0) {
   return { instagram: /Instagram/i.test(ua), android: /Android/i.test(ua), ios: /iPhone|iPad|iPod/i.test(ua) || (platform === 'MacIntel' && touchPoints > 1) };

@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap">
-<link rel="stylesheet" href="css/style.css?v=16">
+<link rel="stylesheet" href="css/style.css?v=17">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -48,6 +48,7 @@
       <button class="btn" id="startBtn" type="button">開始筆試</button>
       <button class="btn ghost" id="introChallengeBtn" type="button" hidden>④ 挑戰模式（已解鎖）</button>
       <button class="btn hard" id="introHardBtn" type="button" hidden>④ 觀塘收工模式（難）</button>
+      <button class="btn boom" id="introBoomBtn" type="button" hidden>④ 行人路炸彈：今次專登撞人</button>
       <p class="fine">純屬虛構：遮政署、《擔遮條例》同所有舖名都係作出嚟。</p>
     </div>
   </section>
@@ -142,6 +143,7 @@
       <div class="log" id="resLog"></div>
       <button class="btn" id="challengeBtn" type="button" hidden>④ 挑戰模式：每 10 秒快 20%</button>
       <button class="btn hard" id="hardBtn" type="button" hidden>④ 觀塘收工模式（難）：人人趕收工，一開始就快</button>
+      <button class="btn boom" id="boomBtn" type="button" hidden>④ 行人路炸彈：觀塘收工，要撞中每個人</button>
       <button class="btn ghost" id="retryBtn" type="button">再考一次</button>
     </div>
   </section>
@@ -199,8 +201,8 @@
 </button>
 <div class="sound-tip" id="soundTip" hidden></div>
 
-<script type="module" src="js/browser.mjs?v=16"></script>
-<script type="module" src="js/game.js?v=16"></script>
+<script type="module" src="js/browser.mjs?v=17"></script>
+<script type="module" src="js/game.js?v=17"></script>
 <script>
 // The shared visitor service lives on the production website. GitHub Pages stays standalone.
 if (['whatifhk.com', 'www.whatifhk.com'].includes(location.hostname)) {

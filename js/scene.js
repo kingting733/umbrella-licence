@@ -2,7 +2,7 @@
 // 頭頂招牌 / 騎樓、選單畫面嘅「你」公仔、牌照相同考官頭像
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { V3, rng, vinyl, matte, mesh, ell, group, canvas, tex, hex, F, makePerson, posePerson, makePhone, makeCar, makeUmbrella, makeRain, tower, PAINT, surfTex, makeTrolley } from './toy.js?v=16';
+import { V3, rng, vinyl, matte, mesh, ell, group, canvas, tex, hex, F, makePerson, posePerson, makePhone, makeCar, makeUmbrella, makeRain, tower, PAINT, surfTex, makeTrolley } from './toy.js?v=17';
 
 export const INK = '#16181d', RED = '#e23b3b', GOLD = '#ffc94a', GREEN = '#3aa36b', BLUE = '#2e6fd8', ORANGE = '#f08a24';
 
@@ -112,7 +112,8 @@ function placeNPC(n, x, z, walk, o = {}) {
   P.arms[1].sh.rotation.x = HOLD_ARM[0]; P.root.updateMatrixWorld(true); P.arms[1].hand.getWorldPosition(tmpV);
   n.U.position.set(x + (tmpV.x - x) * .35, tmpV.y - .04, tmpV.z); n.U.rotation.set(0, 0, 0); n.U.userData.open(1);
 }
-export function npcSpawn(type) { const list = W.pool[type]; let n = list.find(q => !q.busy); if (!n) { n = buildNPC(type); list.push(n); } n.busy = true; return n; }
+// cm：呢個人今次幾高（觀塘收工嘅低頭族 182cm）；冇就用返預設
+export function npcSpawn(type, cm) { const list = W.pool[type]; let n = list.find(q => !q.busy); if (!n) { n = buildNPC(type); list.push(n); } n.busy = true; n.P.scale0 = (cm || n.cm) / 194; return n; }
 export function npcPlace(n, side, z, walk, o) { placeNPC(n, side * .85, z, walk, o); }
 export function npcRelease(n) { n.busy = false; n.P.root.visible = false; n.U.visible = false; }
 export function npcScreen(n) { // 標籤位置：遮頂上面少少

@@ -26,8 +26,8 @@ async function rpc(fn, body) {
   } finally { clearTimeout(tm); }
 }
 
-// mode：'normal'（挑戰模式）或 'hard'（觀塘收工模式，另一個排行榜 public.scores_hard）；普通模式唔傳 p_mode，同舊版 RPC 一樣
-const withMode = (body, mode) => mode === 'hard' ? { ...body, p_mode: 'hard' } : body;
+// mode：'normal'（挑戰模式）、'hard'（觀塘收工模式，public.scores_hard）、'boom'（行人路炸彈，public.scores_boom）；普通模式唔傳 p_mode，同舊版 RPC 一樣
+const withMode = (body, mode) => mode === 'hard' || mode === 'boom' ? { ...body, p_mode: mode } : body;
 export const submitScore = (name, seconds, mode) => rpc('submit_score', withMode({ p_player: playerId(), p_name: String(name).slice(0, 12), p_seconds: Math.min(300, Math.round(seconds * 10) / 10) }, mode));
 export const getBoard = mode => rpc('get_leaderboard', withMode({ p_player: playerId() }, mode));   // { top: [{rank,name,seconds,me}], me: {rank,name,seconds} | null, total }
 // 而家幾多人同時考緊牌：每 25 秒報到一次（public.ping_online），50 秒內報過到就算在線；離開 / 切走分頁就即刻除名
