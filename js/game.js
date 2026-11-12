@@ -1,9 +1,9 @@
-import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=15';
+import { setupSharing, openSharing, updateChallengeRank } from './share.mjs?v=16';
 // game.js — 擔遮考牌：流程（報到 → 筆試 → 路試 → 領牌 → 挑戰模式）、判定、計分、牌照卡
-import { QUESTIONS, SIGNS } from './questions.js?v=15';
-import * as W from './scene.js?v=15';
-import { submitScore, getBoard, pingOnline, leaveOnline } from './board.js?v=15';
-import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=15';
+import { QUESTIONS, SIGNS } from './questions.js?v=16';
+import * as W from './scene.js?v=16';
+import { submitScore, getBoard, pingOnline, leaveOnline } from './board.js?v=16';
+import { unlock, sfx, music, musicSpeed, ambience, prefs, setPref } from './audio.js?v=16';
 const { INK, RED, GOLD, GREEN, BLUE, ORANGE } = W;
 
 const $ = s => document.querySelector(s);
@@ -110,8 +110,9 @@ const PEOPLE = {
   muscle: { name: '健身大隻佬', need: 'down', f: 1 },
   tourist: { name: '拖喼遊客', need: 'down', f: .95 },
   baller: { name: '籃球隊長', need: 'down', f: 1 },
+  couple: { name: '拖手情侶', need: 'up', f: 1 },   // 觀塘收工先有：兩個人一左一右拖住手，成條路咁闊
 };
-const CM = { popo: 155, kid: 132, flyer: 160, ol: 167, phone: 171, rider: 175, muscle: 185, tourist: 188, baller: 198 };
+const CM = { popo: 155, kid: 132, flyer: 160, ol: 167, phone: 171, rider: 175, muscle: 185, tourist: 188, baller: 198, couple: 169 };
 // 節奏：行慢啲（VWALK / VREL）、人少啲（GAP：每個人之間隔 2.6–3.4 秒）、撳完把遮維持耐啲（HOLD）
 const VWALK = 1.2, VREL = 2.2, HOLD = 1.6, PERFECT = .4, WET = 2.0, TEST_LEN = 60, HINT_UNTIL = 20, GAP = [2.6, 3.4], WARN_SIGN = 1.6;
 // 高過你嘅人：佢喺邊邊行過，就將遮壓低去另一邊（左邊嚟 → 壓低 →），讓佢把遮喺你上面過
@@ -120,20 +121,51 @@ const NOW_T = 1.45;
 const awaySide = side => side < 0 ? 'downR' : 'downL';
 const awayArrow = side => side < 0 ? '壓低 →' : '← 壓低';
 const R = { alive: false };
-const speedAt = t => R.mode === 'challenge' ? Math.pow(1.2, Math.floor(t / 10)) : 1;
+// 挑戰模式兩個難度：普通（×1 起步）、觀塘收工（×1.25 起步、多啲小學生）（使用者 2026-11-12）
+// 觀塘收工每種人嘅特性（速度以普通途人 = 1）：小學生 2 倍狂奔、外賣仔 1.5 倍飛車、阿婆 0.8 倍而且會突然停一停再行、
+// 低頭族行到面前突然轉線、派傳單姐姐企定唔郁（淨係你行埋去）；
+// 第二批（使用者 2026-11-12）：狂奔小學生突然掉頭再衝返嚟、一隊 3 個小學生、拖手情侶（唔可以壓低）、遊客停低影相、籃球隊長突然蹲低綁鞋帶（橙牌變藍牌）
+const HARD_BASE = 1.25, HARD_F = { kid: 2.0, rider: 1.5, popo: .8 };
+const clamp01 = x => Math.max(0, Math.min(1, x));
+// 途人位置：distOf(e, r) = 離你幾遠（r = 離擦身仲有幾多秒）。平時以 e.v 行埋嚟；e.win = [[r 由, r 到, 速度, 款]] 嗰段用另一個速度：
+// 停低 / 影相 / 蹲低 = 佢唔郁、淨係你行埋去（VWALK·m）；掉頭 = 負數（行遠咗）。r = 0 永遠係擦身，時間唔會變。
+function distOf(e, r) {
+  let d = e.v * r;
+  for (const w of e.win || []) { const a = Math.max(w[0], Math.min(0, r)), b = Math.min(w[1], Math.max(0, r)); if (b > a) d += (w[2] - e.v) * (b - a) * Math.sign(r); }
+  return d;
+}
+const zOf = (e, t) => -distOf(e, e.contact - t);
+const winAt = (e, t) => { const r = e.contact - t; return (e.win || []).find(w => r > w[0] && r <= w[1]); };
+// 腳步跟住佢自己行咗幾遠（扣返你自己行嗰段）：停低 / 企定 / 蹲低就唔郁腳；掉頭時轉身
+const walkOf = (e, t) => e.still ? null : e.walk0 - (distOf(e, e.contact - t) - VWALK * (e.m || 1) * (e.contact - t)) * 5.5;
+function poseOf(e, t) { const w = winAt(e, t), k = w && w[3]; return { yaw: k === 'uturn' ? Math.PI : 0, kneel: e.crouchT != null ? clamp01((t - e.crouchT) / .25) : 0, photo: k === 'photo' }; }
+function spawnPerson(e) { if (e.type === 'couple') { e.n = W.npcSpawn('ol'); e.n2 = W.npcSpawn('phone'); } else e.n = W.npcSpawn(e.type); }
+function releasePerson(e) { W.npcRelease(e.n); if (e.n2) W.npcRelease(e.n2); }
+function placePerson(e, z) {
+  const o = poseOf(e, R.t), wk = walkOf(e, R.t);
+  if (e.n2) { W.npcPlace(e.n, -.72, z, wk, o); W.npcPlace(e.n2, .72, z + .12, wk == null ? null : wk + 1.4, o); }
+  else W.npcPlace(e.n, sideOf(e), z, wk, o);
+}
+function personScreen(e) {
+  const a = W.npcScreen(e.n); if (!e.n2) return a;
+  const b = W.npcScreen(e.n2); return { x: (a.x + b.x) / 2, y: Math.min(a.y, b.y), ok: a.ok && b.ok };
+}
+const sideOf = e => e.switched ? -e.side + 2 * e.side * clamp01((R.t - e.switchT) / .3) : e.side;   // 轉線：0.3 秒滑過去
+const speedAt = t => R.mode === 'challenge' ? (R.hard ? HARD_BASE : 1) * Math.pow(1.2, Math.floor(t / 10)) : 1;
+const levelName = () => R.hard ? '觀塘收工模式' : '挑戰模式';
 
-function startRoad(mode) {
-  if (mode === 'challenge') { window.WhatIfVisitor?.setUsername(G.name); window.WhatIfVisitor?.track('game_started', { mode }); window.WhatIfVisitor?.track('challenge_started'); } else if (mode === 'test') window.WhatIfVisitor?.track('road_started');
+function startRoad(mode, hard = false) {
+  if (mode === 'challenge') { window.WhatIfVisitor?.setUsername(G.name); window.WhatIfVisitor?.track('game_started', { mode, level: hard ? 'hard' : 'normal' }); window.WhatIfVisitor?.track('challenge_started', { level: hard ? 'hard' : 'normal' }); } else if (mode === 'test') window.WhatIfVisitor?.track('road_started');
   audio(); clearEvents(); W.roadReset(); W.setMode('road'); coachHide();
   const tut = mode === 'tutorial';
-  Object.assign(R, { mode, alive: true, running: tut, ended: false, pre: tut ? 0 : 3.2, coach: null, tut: tut ? { done: new Set(), lesson: 0, idle: null, miss: 0, exitFor: null } : null, t: 0, state: 'normal', stateUntil: 0, lastAct: -9, lastActType: '', coverUntil: -1, wet: 0,
+  Object.assign(R, { mode, hard: mode === 'challenge' && hard, alive: true, running: tut, ended: false, pre: tut ? 0 : 3.2, coach: null, tut: tut ? { done: new Set(), lesson: 0, idle: null, miss: 0, exitFor: null } : null, t: 0, state: 'normal', stateUntil: 0, lastAct: -9, lastActType: '', coverUntil: -1, wet: 0,
     strikes: 0, lives: mode === 'test' ? 3 : 1, log: [], ok: 0, perfect: 0, combo: 0, maxCombo: 0, perfectRun: 0, maxPerfectRun: 0, wetCount: 0, signs: 0, signPerfect: 0, popoHit: false,
-    events: [], lastCover: 0, lastContact: 1.4, lastKind: '', lastType: '', nextSignAt: 8 + rand(0, 2), level: 0, lastTs: 0 });
+    events: [], lastCover: 0, lastContact: 1.4, lastKind: '', lastType: '', lastV: 0, lastSide: 1, gid: 0, nextSignAt: 8 + rand(0, 2), level: 0, lastTs: 0 });
   if (tut) buildTutorial();
-  $('#hudMode').textContent = mode === 'test' ? '② 路試' : tut ? '② 路試練習' : '④ 挑戰模式';
+  $('#hudMode').textContent = mode === 'test' ? '② 路試' : tut ? '② 路試練習' : '④ ' + levelName();
   $('#lives').innerHTML = tut ? '' : '<i></i>'.repeat(R.lives); $('#road').classList.toggle('tut', tut); if (tut) $('#hudTime').textContent = '練習'; $('#combo').textContent = ''; $('#endOverlay').hidden = true; $('#warn').hidden = true; $('#banner').hidden = true; $('#wet').hidden = true; $('#tags').innerHTML = '';
   $('#road').classList.remove('soaked'); updateButtons(); show('road'); W.resize();
-  exam('neutral', mode === 'test' ? '準備好就出發。' : '挑戰模式。撞一次就完。'); ambience('open');
+  exam('neutral', mode === 'test' ? '準備好就出發。' : R.hard ? '觀塘收工時間！小學生狂奔、外賣仔飛車，阿婆會停，低頭族會轉線。' : '挑戰模式。撞一次就完。'); ambience('open');
   if (tut) { $('#count').hidden = true; music('road'); } else showCount(3);
 }
 function showCount(v, go) { const c = $('#count'); c.textContent = v; c.hidden = false; c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop'); if (go) setTimeout(() => { c.hidden = true; }, 600); }
@@ -231,7 +263,7 @@ function setupRoadIntro() {
 }
 
 function genEvents() {
-  while (R.lastContact - R.t < 4.5) {
+  while (R.lastContact - R.t < (R.hard ? 9 : 4.5)) {
     if (R.mode === 'test' && R.lastContact > TEST_LEN - 2.2) return;
     const m = speedAt(R.lastContact);
     // 行出瓦遮頭之後，下一個人要隔多 1.6 秒，畀時間開返把遮
@@ -244,9 +276,29 @@ function genEvents() {
       R.lastCover = len / v + .2;
       R.nextSignAt = contact + rand(9, 13); R.lastKind = 'sign';
     } else {
-      let type; do { type = pick(['popo', 'popo', 'kid', 'flyer', 'ol', 'phone', 'rider', 'muscle', 'tourist', 'baller']); } while (type === R.lastType);
+      const pool = ['popo', 'popo', 'kid', 'flyer', 'ol', 'phone', 'rider', 'muscle', 'tourist', 'baller']; if (R.hard) pool.push('kid', 'couple', 'group');
+      let type; do { type = pick(pool); } while (type === R.lastType);
       R.lastType = type; R.lastKind = 'person';
-      e = { kind: 'person', contact, type, side: Math.random() < .5 ? -1 : 1, v: VREL * m * PEOPLE[type].f, spawned: false, resolved: false, walk0: Math.random() * 6 };
+      // 前面嗰個人快過呢個：佢會喺後面追過呢個人，所以呢個人一定行另一邊，唔好兩個疊埋（標籤都疊埋睇唔到）
+      const pickSide = v => R.hard && v < R.lastV * .9 ? -R.lastSide : Math.random() < .5 ? -1 : 1;
+      if (type === 'group') {   // 一隊 3 個小學生：同一邊貼住行（每個隔 0.6 秒），撳一下舉高要包得晒成隊（舉高維持 1.6 秒）
+        const v = VREL * m * PEOPLE.kid.f, side = pickSide(v), gid = ++R.gid;
+        for (let k = 0; k < 3; k++) R.events.push({ kind: 'person', contact: contact + k * .6, type: 'kid', f: PEOPLE.kid.f, m, side, v, spawned: false, resolved: false, walk0: k * 2.1, group: gid });
+        R.lastV = v; R.lastSide = side; R.lastContact = contact + 1.2; continue;
+      }
+      const f = R.hard && HARD_F[type] ? HARD_F[type] : PEOPLE[type].f, still = R.hard && type === 'flyer';
+      const v = still ? VWALK * m : VREL * m * f, side = type === 'couple' ? 0 : pickSide(v), win = [];
+      // 特別動作按「離你幾遠」發生（唔係按秒數），加速之後都係喺眼前做，唔會喺遠處做完先出標籤
+      const at = (d0, d1, min) => Math.max(min, rand(d0, d1) / v);
+      if (R.hard && type === 'popo') { const a = at(3.5, 6, 1); win.push([a, a + rand(.6, .9), VWALK * m, 'stop']); }
+      if (R.hard && type === 'tourist' && Math.random() < .6) { const a = at(4, 6.5, 1); win.push([a, a + rand(.8, 1.1), VWALK * m, 'photo']); }
+      if (R.hard && type === 'kid' && Math.random() < .45) { const a = at(9, 12, 1.5); win.push([a - .7, a, -2.0 * m, 'uturn']); }   // 掉頭跑走 0.7 秒再衝返嚟
+      const crouchAt = R.hard && type === 'baller' && Math.random() < .5 ? rand(4.5, 6) / (VWALK * m) : 0;   // 離你 4.5–6 米蹲低，之後企喺度綁鞋帶（淨係你行埋去）
+      if (crouchAt) win.push([-Infinity, crouchAt, VWALK * m, 'crouch']);
+      e = { kind: 'person', contact, type, f, m, side, v, win, spawned: false, resolved: false, walk0: Math.random() * 6,
+        run: R.hard && (type === 'kid' || type === 'rider'), still, crouchAt,
+        switchAt: R.hard && type === 'phone' ? at(5, 8, .9) : 0 };
+      R.lastV = type === 'couple' ? 0 : v; R.lastSide = side;
     }
     R.lastContact = contact; R.events.push(e);
   }
@@ -254,7 +306,7 @@ function genEvents() {
 
 function step(dt) {
   if (!R.running) {
-    if (R.pre > 0 && !R.ended) { const before = Math.ceil(R.pre); R.pre -= dt; const now = Math.ceil(R.pre); if (R.pre <= 0) { R.running = true; showCount('出發！', true); sfx.go(); music('road'); } else if (now !== before) { showCount(now); sfx.count(); } }
+    if (R.pre > 0 && !R.ended) { const before = Math.ceil(R.pre); R.pre -= dt; const now = Math.ceil(R.pre); if (R.pre <= 0) { R.running = true; showCount('出發！', true); sfx.go(); music('road'); if (R.hard) musicSpeed(HARD_BASE, 1); } else if (now !== before) { showCount(now); sfx.count(); } }
     return;
   }
   if (R.ended) return;
@@ -267,14 +319,16 @@ function step(dt) {
   if (R.state === 'closed' && !covered) { R.wet += dt; if (R.wet >= WET) { R.wet = 0; R.wetCount++; R.state = 'normal'; updateButtons(); fault('淋到濕晒！', '冇瓦遮頭仲收住遮，淋到成身濕。', 'wet'); if (R.ended) return; } }
   else R.wet = Math.max(0, R.wet - dt * 2);
   $('#wet').hidden = R.wet <= .05; $('#wetFill').style.width = (R.wet / WET * 100) + '%'; $('#road').classList.toggle('soaked', R.state === 'closed' && !covered);
-  if (R.mode === 'challenge') { const lv = Math.floor(R.t / 10); if (lv > R.level) { R.level = lv; banner(`加速 ×${Math.pow(1.2, lv).toFixed(2)}`); exam('neutral', pick(['快啲喇。', '人多咗。', '仲頂得順？', '考生，專心。'])); sfx.speed(); musicSpeed(Math.min(1.6, Math.pow(1.2, lv)), Math.min(5, lv)); } }
+  if (R.mode === 'challenge') { const lv = Math.floor(R.t / 10); if (lv > R.level) { R.level = lv; banner(`加速 ×${speedAt(R.t).toFixed(2)}`); exam('neutral', pick(R.hard ? ['趕收工呀！', '人人衝緊。', '仲頂得順？', '六點喇。'] : ['快啲喇。', '人多咗。', '仲頂得順？', '考生，專心。'])); sfx.speed(); musicSpeed(Math.min(1.6, speedAt(R.t)), Math.min(5, lv + (R.hard ? 1 : 0))); } }
   if (R.mode !== 'tutorial') genEvents();
   for (const e of R.events) {
     if (e.resolved) continue;
-    const z = -(e.contact - R.t) * e.v;
+    const z = e.kind === 'person' ? zOf(e, R.t) : -(e.contact - R.t) * e.v;
     if (e.kind === 'person') {
-      if (!e.spawned && z > -26) { e.spawned = true; e.n = W.npcSpawn(e.type); }
-      if (e.spawned) W.npcPlace(e.n, e.side, z, e.walk0 + R.t * 5.5 * m * PEOPLE[e.type].f);
+      if (e.switchAt && !e.switched && e.contact - R.t <= e.switchAt) { e.switched = true; e.side = -e.side; e.switchT = R.t; sfx.tick(); }
+      if (e.crouchAt && !e.crouched && e.contact - R.t <= e.crouchAt) { e.crouched = true; e.crouchT = R.t; e.need = 'up'; sfx.tick(); }   // 蹲低：矮咗，要改撳舉高
+      if (!e.spawned && z > -26) { e.spawned = true; spawnPerson(e); }
+      if (e.spawned) placePerson(e, z);
     } else {
       if (!e.spawned && z > -45) { e.spawned = true; e.h = W.hazardSpawn(e.style, e.len); }
       if (e.spawned) W.hazardPlace(e.h, z);
@@ -284,8 +338,8 @@ function step(dt) {
   }
   // 行過咗嘅人 / 招牌：繼續郁一陣先收
   for (const e of R.events) if (e.resolved && e.spawned) {
-    const z = -(e.contact - R.t) * e.v;
-    if (e.kind === 'person') { if (z > 2.5) { W.npcRelease(e.n); e.spawned = false; } else W.npcPlace(e.n, e.side, z, e.walk0 + R.t * 5.5 * m); }
+    const z = e.kind === 'person' ? zOf(e, R.t) : -(e.contact - R.t) * e.v;
+    if (e.kind === 'person') { if (z > 2.5) { releasePerson(e); e.spawned = false; } else placePerson(e, z); }
     else { if (z > e.len + 3) { W.hazardRelease(e.h); e.spawned = false; } else W.hazardPlace(e.h, z); }
   }
   R.events = R.events.filter(e => !e.resolved || e.spawned);
@@ -305,15 +359,17 @@ function resolve(e) {
     return;
   }
   if (R.t < R.coverUntil) return;   // 瓦遮頭底下大家都冇開遮，唔使避
-  const p = PEOPLE[e.type], mySide = awaySide(e.side), isDown = s === 'downL' || s === 'downR';
+  const p = PEOPLE[e.type], need = e.need || p.need, mySide = awaySide(e.side), isDown = s === 'downL' || s === 'downR';
   let ok = false;
   if (s === 'closed') ok = true;
-  else if (p.need === 'up') ok = s === 'up';
-  else if (p.need === 'down') ok = s === mySide;
+  else if (need === 'up') ok = s === 'up';
+  else if (need === 'down') ok = s === mySide;
   else ok = s === 'up' || s === mySide;
   if (ok) { success(s !== 'closed' && R.t - R.lastAct <= PERFECT, false); return; }
   if (e.type === 'popo' && R.mode === 'tutorial') { fault('插中阿婆！', '阿婆係藍牌：一定要撳【舉高】。正式路試插中佢即時肥佬。', 'poke'); return; }
   if (e.type === 'popo') { R.popoHit = true; endRoad('instant', '即時取消資格', '遮骨直插阿婆眼部。'); return; }
+  if (e.type === 'couple') { fault(isDown ? '撞散情侶！' : '插親人！', '佢哋拖住手成條路咁闊，壓低去邊都會撞到，要撳【舉高】。', isDown ? 'bump' : 'poke'); return; }
+  if (e.crouched) { fault('插親人！', '籃球隊長突然蹲低綁鞋帶，矮咗一大截，要改撳【舉高】。', 'poke'); return; }
   const sw = e.side < 0 ? '左' : '右', other = e.side < 0 ? '右' : '左', arrow = awayArrow(e.side);
   if (isDown && s !== mySide && p.need !== 'up') fault('壓錯邊！', `${p.name}喺你${sw}邊行過，要將遮壓低去${other}邊【${arrow}】。`, 'side');
   else if (p.need === 'up') fault('插親人！', `遮骨刮中${p.name}（${CM[e.type]}cm），要撳【舉高】。`, 'poke');
@@ -371,29 +427,44 @@ function updateButtons() {
   $('#bClose').firstChild.textContent = R.state === 'closed' ? '開遮' : '緊急收遮';
 }
 
-function clearEvents() { for (const e of R.events || []) if (e.spawned) { if (e.kind === 'person') W.npcRelease(e.n); else W.hazardRelease(e.h); e.spawned = false; } R.events = []; W.setCovered(false); }
+function clearEvents() { for (const e of R.events || []) if (e.spawned) { if (e.kind === 'person') releasePerson(e); else W.hazardRelease(e.h); e.spawned = false; } R.events = []; W.setCovered(false); }
 
 // ---------- HUD 小部件 ----------
 function pop(text, cls) { const el = $('#pop'); el.textContent = text; el.className = 'pop ' + cls; void el.offsetWidth; el.classList.add('go'); }
 function showWarn(on) { $('#warn').hidden = !on; }
 function banner(text) { const b = $('#banner'); b.textContent = text; b.hidden = false; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go'); clearTimeout(banner.tm); banner.tm = setTimeout(() => { b.hidden = true; }, 1600); }
+function hardLabel(e) {   // 觀塘收工：標籤上提示呢個人有咩特別
+  const r = e.contact - R.t, w = winAt(e, R.t), k = w && w[3];
+  if (e.group) return `<u>一隊 ×${R.events.filter(x => x.group === e.group && !x.resolved).length}</u>`;
+  if (e.type === 'couple') return '<u class="calm">唔可以壓低</u>';
+  if (k === 'uturn') return '<u class="calm">掉頭</u>';
+  if (k === 'crouch') return '<u>蹲低！</u>';
+  if (k === 'stop') return '<u class="calm">停低</u>';
+  if (k === 'photo') return '<u class="calm">影相</u>';
+  if (e.type === 'kid' && e.run) { const u = (e.win || []).find(x => x[3] === 'uturn'); return u && r <= u[0] && r > u[0] - .8 ? '<u>衝返嚟！</u>' : '<u>狂奔</u>'; }
+  if (e.type === 'rider' && e.run) return '<u>飛車</u>';
+  if (e.still) return '<u class="calm">企定</u>';
+  if (e.switched && R.t - e.switchT < 1.2) return '<u>轉線！</u>';
+  return '';
+}
 function drawTags() {
   const box = $('#tags'); if (!R.running) return;
   const hint = (R.mode === 'test' && R.t < HINT_UNTIL) || R.mode === 'tutorial', want = [];
   const next = R.events.find(e => e.kind === 'person' && !e.resolved);   // 最近嗰個先係要處理嘅
   for (const e of R.events) if (e.kind === 'person' && e.spawned && !e.resolved) {
-    const left = e.contact - R.t, z = -left * e.v; if (z < -15 || left < .12) continue;
-    const s = W.npcScreen(e.n); if (!s.ok) continue; want.push({ e, s });
+    const left = e.contact - R.t, z = zOf(e, R.t); if (z < -15 || left < .12 || (e.still && left > 4.5)) continue;
+    if (e.group && R.events.find(x => x.group === e.group && !x.resolved) !== e) continue;   // 一隊人只出一個標籤
+    const s = personScreen(e); if (!s.ok) continue; want.push({ e, s });
   }
   const els = [...box.children];
   while (els.length < want.length) { const d = document.createElement('div'); d.className = 'tag'; box.appendChild(d); els.push(d); }
   els.forEach((el, i) => {
     const w = want[i]; if (!w) { el.style.display = 'none'; return; }
-    const p = PEOPLE[w.e.type], arrow = w.e.side < 0 ? '→' : '←';   // 箭咀 = 要壓低嘅方向（佢嘅另一邊）
-    const hintTxt = !hint ? '' : p.need === 'up' ? '舉高' : p.need === 'down' ? awayArrow(w.e.side) : '舉高 / ' + awayArrow(w.e.side);
+    const p = PEOPLE[w.e.type], need = w.e.need || p.need, arrow = w.e.side < 0 ? '→' : '←';   // 箭咀 = 要壓低嘅方向（佢嘅另一邊）
+    const hintTxt = !hint ? '' : need === 'up' ? '舉高' : need === 'down' ? awayArrow(w.e.side) : '舉高 / ' + awayArrow(w.e.side);
     const now = R.mode === 'tutorial' && R.tut.lesson < 6 && w.e.contact - R.t <= NOW_T && w.e.contact >= R.coverUntil;
-    el.style.display = ''; el.className = 'tag ' + p.need + (now ? ' now' : '') + (w.e !== next ? ' later' : '') + (R.coach && R.coach.ev === w.e ? ' focus' : '');
-    el.innerHTML = `<b>${CM[w.e.type]}cm</b> ${p.name}${p.need !== 'up' ? `<i>${arrow}</i>` : ''}${hintTxt ? `<small>${hintTxt}</small>` : ''}${now ? '<em>撳！</em>' : ''}`;
+    el.style.display = ''; el.className = 'tag ' + need + (w.e.run ? ' run' : '') + (now ? ' now' : '') + (w.e !== next ? ' later' : '') + (R.coach && R.coach.ev === w.e ? ' focus' : '');
+    el.innerHTML = `<b>${w.e.crouched ? '蹲低' : CM[w.e.type] + 'cm'}</b> ${p.name}${hardLabel(w.e)}${need !== 'up' ? `<i>${arrow}</i>` : ''}${hintTxt ? `<small>${hintTxt}</small>` : ''}${now ? '<em>撳！</em>' : ''}`;
     const bw = box.clientWidth, half = el.offsetWidth / 2 + 8;   // 唔好俾標籤出咗畫面
     el.style.left = Math.min(bw - half, Math.max(half, w.s.x * bw)) + 'px'; el.style.top = (Math.max(.14, w.s.y) * 100) + '%';
   });
@@ -404,7 +475,7 @@ function finishExam(outcome) {
   const st = G.stats; let grade;
   if (outcome !== 'pass') grade = 'raincoat'; else if (G.written === 5 && st.strikes === 0) grade = 'full'; else grade = 'partial';
   window.WhatIfVisitor?.track('exam_completed', { outcome, grade, written_score: G.written, strikes: st?.strikes || 0 });
-  G.grade = grade; if (grade !== 'raincoat') store.set('unlocked', true);
+  G.grade = grade; if (outcome !== 'written-fail') store.set('unlocked', true);   // 考過路試（合格或者唔合格）就解鎖挑戰模式（使用者 2026-11-12）
   G.licNo = licNo();
   const rows = [['筆試', `${G.written} / 5`], ['路試', outcome === 'written-fail' ? '未獲安排（筆試不合格）' : st.completed ? '完成 60 秒' : '不合格']];
   if (st) rows.push(['犯錯', `${st.strikes} 次`], ['錯開', `${st.ok} 個（完美 ${st.perfect}）`], ['最高連擊', `${st.maxCombo}`]);
@@ -414,7 +485,7 @@ function finishExam(outcome) {
   const verdict = { raincoat: ['不合格', '即日起出街須著<b>雨衣</b>。下次可預約考試日期：2028 年 3 月。'], partial: ['有條件合格', '批出第 1 類：<b>縮骨遮</b>。其他類別要零犯錯先批。'], full: ['全科合格', '批出<b>全部類別</b>，仲可以申請做「Uber Umbrella」司機。'] }[grade];
   $('#resPill').textContent = verdict[0]; $('#resPill').className = 'pill ' + (grade === 'raincoat' ? 'red' : grade === 'full' ? 'green' : 'blue'); $('#resLine').innerHTML = verdict[1];
   $('#cardImg').src = makeCard(grade); $('#taxiArea').hidden = grade !== 'full'; $('#taxiImg').hidden = true; $('#taxiStatus').hidden = true; $('#taxiBtn').hidden = false;
-  $('#challengeBtn').hidden = grade === 'raincoat'; W.setMode('menu', grade); show('result'); setTimeout(sfx.stamp, 400);
+  $('#challengeBtn').hidden = $('#hardBtn').hidden = outcome === 'written-fail'; W.setMode('menu', grade); show('result'); setTimeout(sfx.stamp, 400);
 }
 function licNo() { const d = [...Array(6)].map(() => Math.floor(Math.random() * 10)); const sum = d.reduce((s, v, i) => s + v * (7 - i), 0) + 21 * 9; const c = 11 - (sum % 11); return `U${d.join('')}(${c === 11 ? 0 : c === 10 ? 'A' : c})`; }
 const today = () => { const n = new Date(); return `${String(n.getDate()).padStart(2, '0')}-${String(n.getMonth() + 1).padStart(2, '0')}-${n.getFullYear()}`; };
@@ -461,21 +532,22 @@ function applyTaxi() { sfx.tap(); $('#taxiBtn').hidden = true; const s = $('#tax
 
 function challengeDone(title, reason) {
   window.WhatIfVisitor?.track('challenge_completed', { duration_seconds: R.t, perfect: R.perfect });
-  const t = R.t, best = store.get('best', 0), isNew = t > best; if (isNew) store.set('best', t);
+  const t = R.t, bestKey = R.hard ? 'bestHard' : 'best', best = store.get(bestKey, 0), isNew = t > best; if (isNew) store.set(bestKey, t);
+  $('#crPill').textContent = '④ ' + levelName(); $('#crOther').textContent = R.hard ? '返去普通挑戰' : '試下觀塘收工模式（難）';
   $('#crTime').textContent = t.toFixed(1); $('#crBest').innerHTML = isNew ? '<span class="pill gold">新紀錄</span>' : `最佳紀錄 ${best.toFixed(1)} 秒`;
-  $('#crRows').innerHTML = [['最高速度', `×${Math.pow(1.2, Math.floor(t / 10)).toFixed(2)}`], ['錯開', `${R.ok} 個（完美 ${R.perfect}）`], ['最高連擊', `${R.maxCombo}`], ['點死', title ? `${title}` : '—']].map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
+  $('#crRows').innerHTML = [['難度', R.hard ? '觀塘收工（難）' : '普通'], ['最高速度', `×${speedAt(t).toFixed(2)}`], ['錯開', `${R.ok} 個（完美 ${R.perfect}）`], ['最高連擊', `${R.maxCombo}`], ['點死', title ? `${title}` : '—']].map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
   $('#crReason').textContent = reason || ''; show('challengeResult'); setTimeout(isNew ? sfx.win : sfx.stamp, 300);
-  loadBoard(t);
+  loadBoard(t, R.hard ? 'hard' : 'normal');
 }
 
 // ---------- 挑戰模式排行榜 ----------
 let boardSeq = 0, shareRank = null;
-async function loadBoard(t) {
+async function loadBoard(t, mode) {
   shareRank = null; const seq = ++boardSeq, list = $('#boardList'), status = $('#boardStatus');
   list.innerHTML = ''; $('#boardMe').textContent = ''; status.hidden = false; status.textContent = '上載成績、載入排行榜…';
   try {
-    try { await submitScore(G.name, t); } catch (e) { /* 上載失敗都照樣顯示排行榜 */ }
-    const b = await getBoard(); if (seq !== boardSeq) return;
+    try { await submitScore(G.name, t, mode); } catch (e) { /* 上載失敗都照樣顯示排行榜 */ }
+    const b = await getBoard(mode); if (seq !== boardSeq) return;
     if (b.me) { shareRank = { rank: Number(b.me.rank), total: Number(b.total) }; updateChallengeRank(shareRank.rank, shareRank.total); }
     const row = (r, cls) => { const li = document.createElement('li'); if (cls) li.className = cls; for (const [c, v] of [['r', r.rank], ['n', r.name], ['s', Number(r.seconds).toFixed(1) + ' 秒']]) { const s = document.createElement('span'); s.className = c; s.textContent = v; li.appendChild(s); } return li; };
     (b.top || []).forEach(r => list.appendChild(row(r, r.me ? 'me' : '')));
@@ -498,24 +570,28 @@ function loop(ts) {
 function boot() {
   setupSharing();
   $('#shareLicence').addEventListener('click', () => openSharing({ kind: 'licence', background: W.shareBackground(), name: G.name, grade: G.grade, card: $('#cardImg').src, written: G.written, road: G.stats?.completed ? '路試完成 60 秒' : G.stats ? '路試不合格' : '路試未獲安排' }));
-  $('#shareChallenge').addEventListener('click', () => openSharing({ kind: 'challenge', background: W.shareBackground(), name: G.name, seconds: R.t, perfect: R.perfect, combo: R.maxCombo, speed: speedAt(R.t), best: store.get('best', R.t), ...shareRank }));
+  $('#shareChallenge').addEventListener('click', () => openSharing({ kind: 'challenge', hard: R.hard, background: W.shareBackground(), name: G.name, seconds: R.t, perfect: R.perfect, combo: R.maxCombo, speed: speedAt(R.t), best: store.get(R.hard ? 'bestHard' : 'best', R.t), ...shareRank }));
   W.initWorld($('#world'));
   try { G.portraits = W.makePortraits(); for (const k of ['full', 'raincoat', 'taxi']) { PHOTO[k] = new Image(); PHOTO[k].src = G.portraits.you[k]; } exam('neutral'); } catch (e) { G.portraits = null; }
   $('#nameInput').value = store.get('name', ''); G.name = store.get('name', '') || G.name;
-  const unlocked = store.get('unlocked', false); $('#introChallengeBtn').hidden = !unlocked;
+  const unlocked = store.get('unlocked', false); $('#introChallengeBtn').hidden = $('#introHardBtn').hidden = !unlocked;
   window.addEventListener('pointerdown', audio, true); window.addEventListener('keydown', audio, true);   // 第一下撳就開聲（手機規定）
   $('#soundBtn').addEventListener('click', cycleSound); soundUI(false);
   ping();
   $('#startBtn').addEventListener('click', startWritten);
-  $('#introChallengeBtn').addEventListener('click', () => { G.name = ($('#nameInput').value || '').trim() || G.name; store.set('name', G.name); startRoad('challenge'); });
+  const introGo = hard => { G.name = ($('#nameInput').value || '').trim() || G.name; store.set('name', G.name); startRoad('challenge', hard); };
+  $('#introChallengeBtn').addEventListener('click', () => introGo(false));
+  $('#introHardBtn').addEventListener('click', () => introGo(true));
   $('#nextBtn').addEventListener('click', nextQ);
   $('#wrBtn').addEventListener('click', () => { sfx.tap(); if (G.written >= 4) { W.setMode('menu', 'intro'); setupRoadIntro(); show('roadIntro'); } else { G.stats = null; finishExam('written-fail'); } });
   $('#roadStartBtn').addEventListener('click', () => startRoad('test'));
   $('#tutBtn').addEventListener('click', () => startRoad('tutorial'));
-  $('#retryBtn').addEventListener('click', () => { sfx.tap(); W.setMode('menu', 'intro'); $('#introChallengeBtn').hidden = !store.get('unlocked', false); show('intro'); });
+  $('#retryBtn').addEventListener('click', () => { sfx.tap(); W.setMode('menu', 'intro'); $('#introChallengeBtn').hidden = $('#introHardBtn').hidden = !store.get('unlocked', false); show('intro'); });
   $('#challengeBtn').addEventListener('click', () => startRoad('challenge'));
+  $('#hardBtn').addEventListener('click', () => startRoad('challenge', true));
   $('#taxiBtn').addEventListener('click', applyTaxi);
-  $('#crAgain').addEventListener('click', () => startRoad('challenge'));
+  $('#crAgain').addEventListener('click', () => startRoad('challenge', R.hard));
+  $('#crOther').addEventListener('click', () => startRoad('challenge', !R.hard));
   $('#crBack').addEventListener('click', () => { sfx.tap(); if (G.grade) { W.setMode('menu', G.grade); show('result'); } else { W.setMode('menu', 'intro'); show('intro'); } });
   $$('.cbtn').forEach(b => b.addEventListener('pointerdown', ev => { ev.preventDefault(); act(b.dataset.act); }));
   window.addEventListener('keydown', ev => {

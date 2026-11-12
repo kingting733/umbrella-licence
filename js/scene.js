@@ -2,7 +2,7 @@
 // 頭頂招牌 / 騎樓、選單畫面嘅「你」公仔、牌照相同考官頭像
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { V3, rng, vinyl, matte, mesh, ell, group, canvas, tex, hex, F, makePerson, posePerson, makePhone, makeCar, makeUmbrella, makeRain, tower, PAINT, surfTex, makeTrolley } from './toy.js?v=15';
+import { V3, rng, vinyl, matte, mesh, ell, group, canvas, tex, hex, F, makePerson, posePerson, makePhone, makeCar, makeUmbrella, makeRain, tower, PAINT, surfTex, makeTrolley } from './toy.js?v=16';
 
 export const INK = '#16181d', RED = '#e23b3b', GOLD = '#ffc94a', GREEN = '#3aa36b', BLUE = '#2e6fd8', ORANGE = '#f08a24';
 
@@ -91,24 +91,29 @@ function buildNPC(type) {
   if (type === 'phone') makePhone(P.arms[0].hand, true);
   if (type === 'rider') { mesh(P.head, new THREE.SphereGeometry(.32, 32, 16, 0, Math.PI * 2, 0, Math.PI * .55), vinyl(0xf08a24, .3), 0, .03, -.01); mesh(P.torso, new RoundedBoxGeometry(.55, .55, .42, 3, .06), vinyl(0xe8742a, .5), 0, .45, -.42); }
   if (type === 'muscle') { P.torso.scale.set(1.45, 1, 1.2); mesh(P.head, new RoundedBoxGeometry(.3, .07, .04, 2, .02), vinyl(0x111111, .1), 0, .03, .26, { cast: false }); }
+  let stick = null;
+  if (type === 'tourist') { stick = group(P.arms[0].hand); stick.visible = false; mesh(stick, new THREE.CylinderGeometry(.012, .012, .75, 8), vinyl(0x2a2d33, .3), 0, -.38, 0); const ph = makePhone(stick, true); ph.position.set(0, -.78, 0); ph.rotation.set(Math.PI / 2, 0, 0); }   // 自拍棍（觀塘收工：停低影相先出）
   if (type === 'tourist') { mesh(P.head, new THREE.CylinderGeometry(.45, .45, .03, 32), vinyl(0xe6dcc0, .7), 0, .2, 0); mesh(P.head, new THREE.CylinderGeometry(.24, .28, .16, 32), vinyl(0xe6dcc0, .7), 0, .28, 0); const cs = mesh(extra, new RoundedBoxGeometry(.42, .62, .25, 3, .05), vinyl(0x2e6fd8, .4), .62, .42, .1); mesh(cs, new THREE.CylinderGeometry(.015, .015, .5, 8), vinyl(0x8a8e94, .3), 0, .55, 0); }
   if (type === 'baller') mesh(P.head, new THREE.TorusGeometry(.28, .025, 8, 32), vinyl(0xffffff, .5), 0, .1, 0, { r: [Math.PI / 2 - .25, 0, 0] });
   const U = makeUmbrella(scene, T.U); U.visible = false;
   if (T.clear) U.userData.C.traverse(o => { if (o.isMesh && o.material && o.material.color) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = .45; } });
-  return { P, U, extra, type, cm: T.cm, busy: false };
+  return { P, U, extra, type, cm: T.cm, busy: false, stick };
 }
 const tmpV = V3(0, 0, 0);
-function placeNPC(n, x, z, walk) {
+// o：{ yaw（掉頭 = π）, kneel（蹲低 0–1）, photo（舉起自拍棍） }
+function placeNPC(n, x, z, walk, o = {}) {
   const P = n.P; P.root.visible = true; n.U.visible = true;
-  posePerson(P, { x, y: .16, z, yaw: 0, walk, arms: [[-.25, .1, -.25], HOLD_ARM] }); P.root.scale.setScalar(n.P.scale0);
+  const kn = o.kneel || 0;   // 蹲低綁鞋帶：膝頭落地 + 身向前傾 + 再矮多啲，一眼睇得出矮咗
+  posePerson(P, { x, y: .16 - kn * .3, z, yaw: o.yaw || 0, walk, kneel: kn, lean: kn * .45, arms: [[-.25, .1, -.25], HOLD_ARM] }); P.root.scale.setScalar(n.P.scale0);
   n.extra.scale.x = x < 0 ? -1 : 1;   // 喼 / 購物車擺喺外邊，唔好擋住中間條路
   if (n.type === 'phone') P.arms[0].sh.rotation.x = -1.1, P.arms[0].el.rotation.x = -.9, P.head.rotation.x = .35;
   if (n.type === 'flyer') P.arms[0].sh.rotation.x = -1.3;
+  if (n.stick) { n.stick.visible = !!o.photo; if (o.photo) { P.arms[0].sh.rotation.x = -2.5; P.arms[0].el.rotation.x = 0; P.head.rotation.x = -.25; } }
   P.arms[1].sh.rotation.x = HOLD_ARM[0]; P.root.updateMatrixWorld(true); P.arms[1].hand.getWorldPosition(tmpV);
   n.U.position.set(x + (tmpV.x - x) * .35, tmpV.y - .04, tmpV.z); n.U.rotation.set(0, 0, 0); n.U.userData.open(1);
 }
 export function npcSpawn(type) { const list = W.pool[type]; let n = list.find(q => !q.busy); if (!n) { n = buildNPC(type); list.push(n); } n.busy = true; return n; }
-export function npcPlace(n, side, z, walk) { placeNPC(n, side * .85, z, walk); }
+export function npcPlace(n, side, z, walk, o) { placeNPC(n, side * .85, z, walk, o); }
 export function npcRelease(n) { n.busy = false; n.P.root.visible = false; n.U.visible = false; }
 export function npcScreen(n) { // 標籤位置：遮頂上面少少
   n.U.userData.C.getWorldPosition(tmpV); tmpV.y += .55; const v = tmpV.clone().project(camera);

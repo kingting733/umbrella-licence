@@ -267,3 +267,12 @@ body.ready .loading { display: none; }
 .online b { color: var(--red); font-size: 17px; }
 .online i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(58,163,107,.6); animation: livedot 1.6s ease-out infinite; flex: none; }
 @keyframes livedot { 70% { box-shadow: 0 0 0 8px rgba(58,163,107,0); } 100% { box-shadow: 0 0 0 0 rgba(58,163,107,0); } }
+
+/* 觀塘收工模式（難） */
+.btn.hard { background: #d9452f; color: #fff; }
+.tag u { text-decoration: none; margin-left: 4px; padding: 0 5px; border-radius: 6px; background: #d9452f; color: #fff; font-size: .8em; }
+.tag.run { animation: runshake .22s linear infinite; }
+.tag u.calm { background: #2a2d33; }
+@keyframes runshake { 50% { margin-top: -2px; } }
+/* 要處理嘅（最近嗰個）標籤永遠喺最上面，後面嘅人個標籤唔好疊喺佢上面變花 */
+.tag { z-index: 2; } .tag.later { z-index: 1; }

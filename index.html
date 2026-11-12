@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap">
-<link rel="stylesheet" href="css/style.css?v=15">
+<link rel="stylesheet" href="css/style.css?v=16">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -47,6 +47,7 @@
       <label class="field" for="nameInput"><span>考生姓名</span><input id="nameInput" maxlength="8" placeholder="陳大文" autocomplete="off"></label>
       <button class="btn" id="startBtn" type="button">開始筆試</button>
       <button class="btn ghost" id="introChallengeBtn" type="button" hidden>④ 挑戰模式（已解鎖）</button>
+      <button class="btn hard" id="introHardBtn" type="button" hidden>④ 觀塘收工模式（難）</button>
       <p class="fine">純屬虛構：遮政署、《擔遮條例》同所有舖名都係作出嚟。</p>
     </div>
   </section>
@@ -140,12 +141,13 @@
       <table class="sheet"><tbody id="resRows"></tbody></table>
       <div class="log" id="resLog"></div>
       <button class="btn" id="challengeBtn" type="button" hidden>④ 挑戰模式：每 10 秒快 20%</button>
+      <button class="btn hard" id="hardBtn" type="button" hidden>④ 觀塘收工模式（難）：人人趕收工，一開始就快</button>
       <button class="btn ghost" id="retryBtn" type="button">再考一次</button>
     </div>
   </section>
 
   <section id="challengeResult" class="screen" hidden>
-    <div class="topbar"><span class="pill">④ 挑戰模式</span></div>
+    <div class="topbar"><span class="pill" id="crPill">④ 挑戰模式</span></div>
     <div class="panel tight">
       <p class="fine center">生存時間</p>
       <div class="score"><span id="crTime">0.0</span><small>秒</small></div>
@@ -159,6 +161,7 @@
       </div>
       <button class="btn gold" id="shareChallenge" type="button">分享成績 · IG／Threads</button>
       <button class="btn" id="crAgain" type="button">再挑戰</button>
+      <button class="btn ghost" id="crOther" type="button">試下觀塘收工模式（難）</button>
       <button class="btn ghost" id="crBack" type="button">返去領牌處</button>
     </div>
   </section>
@@ -196,8 +199,8 @@
 </button>
 <div class="sound-tip" id="soundTip" hidden></div>
 
-<script type="module" src="js/browser.mjs?v=15"></script>
-<script type="module" src="js/game.js?v=15"></script>
+<script type="module" src="js/browser.mjs?v=16"></script>
+<script type="module" src="js/game.js?v=16"></script>
 <script>
 // The shared visitor service lives on the production website. GitHub Pages stays standalone.
 if (['whatifhk.com', 'www.whatifhk.com'].includes(location.hostname)) {
